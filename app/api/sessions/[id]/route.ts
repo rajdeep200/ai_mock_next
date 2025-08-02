@@ -1,5 +1,5 @@
 // app/api/sessions/[id]/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/app/models/InterviewSession";
@@ -19,7 +19,7 @@ interface SessionDoc {
 }
 
 export async function GET(
-  req: NextRequest,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
   // 1. Authenticate

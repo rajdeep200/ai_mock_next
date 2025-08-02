@@ -1,0 +1,18 @@
+export const TECHNOLOGIES = [
+    { label: 'React', value: 'react' },
+    { label: 'JavaScript', value: 'javascript' },
+    { label: 'TypeScript', value: 'typescript' },
+    { label: 'Node.js', value: 'nodejs' },
+    { label: 'Data Structures & Algorithms', value: 'dsa' },
+    { label: 'High-Level Design (HLD)', value: 'hld' },
+    { label: 'Low-Level Design (LLD)', value: 'lld' },
+    { label: 'Java', value: 'java' },
+    { label: 'Spring Boot', value: 'spring-boot' },
+    { label: 'Python', value: 'python' },
+    { label: 'Django', value: 'django' },
+    { label: 'Go (Golang)', value: 'go' },
+    { label: 'Angular', value: 'angular' },
+    { label: 'Vue.js', value: 'vuejs' },
+    { label: 'SQL', value: 'sql' },
+    { label: 'Express.js', value: 'expressjs' },
+];

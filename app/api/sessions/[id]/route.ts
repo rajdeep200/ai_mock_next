@@ -1,5 +1,5 @@
 // app/api/sessions/[id]/route.ts
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/app/models/InterviewSession";
@@ -19,8 +19,8 @@ interface SessionDoc {
 }
 
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  context: any
 ) {
   // 1. Authenticate
   const { userId } = await auth();
@@ -28,7 +28,9 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = params;
+  const { params } = context;
+  const id: string = params.id;
+  
   if (!id) {
     return NextResponse.json({ error: "Missing session id" }, { status: 400 });
   }

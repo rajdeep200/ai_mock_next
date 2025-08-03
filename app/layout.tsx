@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   description:
     "MockQube is an AI-powered platform for DSA mock interviews. Practice algorithm problems in a modular cube format, get real-time feedback, and boost your coding confidence.",
   icons: {
-    icon: "/mockqubelogo.jpg",
+    icon: "/mockqubelogo.png",
   },
 };
 

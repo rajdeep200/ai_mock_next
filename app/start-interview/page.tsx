@@ -72,7 +72,7 @@ export default function StartInterviewPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-gray-950 to-green-950 flex items-center justify-center px-4 py-16 text-white relative">
-      <div className="absolute top-66 left-6">
+      <div className="absolute top-6 left-6">
         <button
           onClick={() => router.push("/")}
           className="flex items-center gap-2 text-green-400 hover:text-green-300 font-medium text-sm sm:text-base transition cursor-pointer"

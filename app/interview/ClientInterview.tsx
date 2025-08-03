@@ -18,15 +18,47 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { getPromptsForInterview, SUMMARY_PROMPT } from "@/lib/prompts";
 
-const speak = (text: string, onEnd?: () => void) => {
-  const normalizedText = text.replace(/\bO\(([^)]+)\)/g, "Big O of $1");
-  const utterance = new SpeechSynthesisUtterance(normalizedText);
-  utterance.lang = "en-US";
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  if (onEnd) utterance.onend = onEnd;
-  window.speechSynthesis.speak(utterance);
-};
+// Free Usage
+// const speak = (text: string, onEnd?: () => void) => {
+//   const normalizedText = text.replace(/\bO\(([^)]+)\)/g, "Big O of $1");
+//   const utterance = new SpeechSynthesisUtterance(normalizedText);
+//   utterance.lang = "en-US";
+//   utterance.rate = 1;
+//   utterance.pitch = 1;
+//   if (onEnd) utterance.onend = onEnd;
+//   window.speechSynthesis.speak(utterance);
+// };
+
+
+// Using AWS Polly
+/** fetches an MP3 from our /api/tts and plays it */
+async function speak(text: string, onEnd?: () => void) {
+  try {
+    const normalized = text.replace(/\bO\(([^)]+)\)/g, "Big O of $1");
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: normalized }),
+    });
+    if (!res.ok) throw new Error("TTS failed");
+
+    // assume API returns audio/mpeg
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      onEnd?.();
+    };
+    audio.play();
+  } catch (error) {
+    console.error("TTS error:", error);
+    // fallback to built-in
+    const ut: any = new SpeechSynthesisUtterance(text);
+    ut.onend = onEnd;
+    window.speechSynthesis.speak(ut);
+  }
+}
 
 export default function InterviewPage() {
   const [aiReply, setAiReply] = useState("");
@@ -34,7 +66,7 @@ export default function InterviewPage() {
     { role: "user" | "assistant"; content: string }[]
   >([]);
   const [loading, setLoading] = useState(false);
-  const [endLoading, setEndLoading] = useState(false);
+  const [endLoading, setEndLoading] = useState(false)
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [userCode, setUserCode] = useState("");

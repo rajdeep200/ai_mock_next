@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@aws-sdk/client-polly": "^3.859.0",
     "@clerk/nextjs": "^6.23.0",
     "@supabase/supabase-js": "^2.50.2",
     "axios": "^1.11.0",

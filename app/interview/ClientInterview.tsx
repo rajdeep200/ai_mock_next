@@ -1,5 +1,4 @@
 "use client";
-export const dynamic = "force-dynamic";
 
 import { useEffect, useRef, useState } from "react";
 import SpeechRecognition, {
@@ -35,6 +34,7 @@ export default function InterviewPage() {
     { role: "user" | "assistant"; content: string }[]
   >([]);
   const [loading, setLoading] = useState(false);
+  const [endLoading, setEndLoading] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [userCode, setUserCode] = useState("");
@@ -62,9 +62,8 @@ export default function InterviewPage() {
 
   useEffect(() => {
     if (!cameraOn) {
-      if (videoRef.current) videoRef.current.srcObject = null;
       if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
       }
       return;
@@ -92,6 +91,22 @@ export default function InterviewPage() {
       SpeechRecognition.startListening({ continuous: true, language: "en-US" });
     }
   };
+
+  // Clean up on page unload
+  useEffect(() => {
+    const cleanUp = () => {
+      window.speechSynthesis.cancel();
+      SpeechRecognition.stopListening();
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+        mediaStreamRef.current = null;
+      }
+    };
+    window.addEventListener("beforeunload", cleanUp);
+    return () => {
+      window.removeEventListener("beforeunload", cleanUp);
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -181,8 +196,13 @@ export default function InterviewPage() {
   };
 
   const handleEndInterview = async () => {
+    setEndLoading(true);
+    setCameraOn(false);
     window.speechSynthesis.cancel();
     SpeechRecognition.stopListening();
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
@@ -210,6 +230,8 @@ export default function InterviewPage() {
         });
       } catch (e) {
         console.error("Error sending final feedback", e);
+      } finally {
+        setEndLoading(false);
       }
     }
     router.push("/start-interview");
@@ -252,9 +274,20 @@ export default function InterviewPage() {
             </h1>
             <button
               onClick={handleEndInterview}
-              className="text-red-500 hover:text-red-400 flex items-center gap-2 text-sm font-medium cursor-pointer transition-colors"
+              disabled={endLoading}
+              className={`flex items-center gap-2 text-sm font-medium transition-colors
+                    ${
+                      endLoading
+                        ? "text-gray-400 cursor-not-allowed"
+                        : "text-red-500 hover:text-red-400 cursor-pointer"
+                    }`}
             >
-              <FiX /> End Interview
+              {endLoading ? (
+                <FiLoader className="animate-spin" size={18} />
+              ) : (
+                <FiX size={18} />
+              )}
+              {endLoading ? " Ending…" : " End Interview"}
             </button>
           </header>
 

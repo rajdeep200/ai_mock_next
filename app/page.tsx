@@ -69,7 +69,7 @@ export default function LandingPage() {
             {
               name: 'Rahul S.',
               review:
-                'MockInterviewer.AI helped me get comfortable with real interview pressure. I cracked my Meta interview!',
+                'MockQube helped me get comfortable with real interview pressure. I cracked my Meta interview!',
             },
             {
               name: 'Ananya P.',
@@ -99,7 +99,7 @@ export default function LandingPage() {
       <section className="py-16 px-6 bg-green-700 text-white text-center">
         <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to Ace Your Next Interview?</h2>
         <p className="text-lg max-w-xl mx-auto mb-6">
-          Join thousands of developers using MockInterviewer.AI to prepare smarter and get hired faster.
+          Join thousands of developers using MockQube to prepare smarter and get hired faster.
         </p>
         <Link href="/home">
           <button className="bg-black hover:bg-gray-900 text-white font-bold px-8 py-4 rounded-full text-lg">
@@ -110,7 +110,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="bg-black border-t border-green-800 py-6 text-center text-sm text-green-400">
-        © {new Date().getFullYear()} MockInterviewer.AI · All rights reserved
+        © {new Date().getFullYear()} MockQube · All rights reserved
       </footer>
     </main>
   )

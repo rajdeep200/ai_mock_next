@@ -99,7 +99,7 @@ export default function HomePage() {
 
             {/* Footer */}
             <footer className="w-full py-6 mt-12 border-t border-green-800 text-center text-sm text-green-400">
-                © {new Date().getFullYear()} MockInterviewer.AI · Built for DSA Legends 🧠
+                © {new Date().getFullYear()} MockQube · Built for DSA Legends 🧠
             </footer>
         </main>
     )

@@ -2,7 +2,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectToDB } from "@/lib/mongodb";
-import InterviewSession from "@/app/models/InterviewSession";
+import InterviewSession from "@/models/InterviewSession";
 import { Types } from "mongoose";
 
 interface SessionDoc {

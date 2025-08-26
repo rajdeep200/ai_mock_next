@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
-import { User } from "@/app/models/User";
+import { User } from "@/models/User";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     await connectToDB();
 
     const existingUser = await User.findOne({ clerkId });
+    console.log("existingUser :: ", existingUser)
 
     if (existingUser) {
       return NextResponse.json({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   FiSettings,
@@ -19,9 +19,23 @@ export default function StartInterviewPage() {
     level: "",
     duration: 30,
   });
+  const [planInfo, setPlanInfo] = useState<null | {
+    plan: { id: 'free' | 'starter' | 'pro'; monthlyInterviewCap: number; maxMinutesPerInterview: number; label: string };
+    usage: { interviewsCount: number; month: string };
+  }>(null);
 
   const router = useRouter();
   const { getToken } = useAuth()
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetch('/api/plan');
+      if (res.ok) setPlanInfo(await res.json());
+    })();
+  }, []);
+
+  const capReached = planInfo ? (planInfo.usage.interviewsCount >= planInfo.plan.monthlyInterviewCap) : false;
+  const tooLong = planInfo ? (formData.duration > planInfo.plan.maxMinutesPerInterview) : false;
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -167,11 +181,14 @@ export default function StartInterviewPage() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={loading}
-            className="cursor-pointer w-full mt-4 py-3 px-6 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-emerald-500 hover:to-green-600 rounded-xl text-white font-bold text-lg transition duration-300 shadow-lg hover:shadow-2xl disabled:opacity-50"
+            disabled={loading || capReached || tooLong}
+            className="cursor-pointer w-full mt-4 py-3 px-6 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-emerald-500 hover:to-green-600 rounded-xl text-white font-bold text-lg transition duration-300 shadow-lg hover:shadow-2xl disabled:opacity-50 disabled:opacity-50"
           >
-            {loading ? "Starting…" : "Start DSA Interview"}
+            {capReached ? 'Monthly limit reached — Upgrade' :
+              tooLong ? `Max ${planInfo?.plan.maxMinutesPerInterview} min on ${planInfo?.plan.label}` :
+                (loading ? 'Starting…' : 'Start DSA Interview')}
           </button>
+
         </form>
       </div>
     </div>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectToDB } from "@/lib/mongodb";
-import InterviewSession from "@/app/models/InterviewSession";
+import InterviewSession from "@/models/InterviewSession";
+import { checkCanStartInterview, recordInterviewStart } from "@/lib/usage";
 
 export async function POST(req: NextRequest) {
   // 1. Ensure user is signed in
@@ -24,6 +25,12 @@ export async function POST(req: NextRequest) {
     // 3. Connect to DB
     await connectToDB();
 
+    // 🔐 enforce plan limits
+    const canStart = await checkCanStartInterview(userId, duration)
+    if(!canStart.ok){
+      return NextResponse.json({ error: canStart.reason, code: canStart.code }, { status: 402 });
+    }
+
     // 4. Create new session
     const session = await InterviewSession.create({
       userId,
@@ -33,6 +40,9 @@ export async function POST(req: NextRequest) {
       duration,
       status: "active",
     });
+
+    // 📈 record usage
+    await recordInterviewStart(userId, duration);
 
     // 5. Return the session ID
     return NextResponse.json(

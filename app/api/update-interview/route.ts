@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
-import InterviewSession from "@/app/models/InterviewSession";
+import InterviewSession from "@/models/InterviewSession";
 
 export async function POST(req: NextRequest) {
   try {

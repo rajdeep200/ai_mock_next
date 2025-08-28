@@ -3,10 +3,24 @@ import { monthKey, PLANS } from "./plans";
 import { Usage } from "@/models/Usage";
 import { User } from "@/models/User";
 
+type PlanKey = keyof typeof PLANS;
+
+// Narrow the shape we read from User when using lean()
+type UserLean = { plan?: string } | null;
+
 export async function getUserPlan(userId: string) {
-  const user = await User.findOne({ clerkId: userId }).lean();
-  const plan = (user?.plan ?? "free") as keyof typeof PLANS;
-  return { planId: plan, plan: PLANS[plan] };
+  // Only fetch the plan field and type the lean() result
+  const user = await User.findOne({ clerkId: userId })
+    .select("plan")
+    .lean<UserLean>();
+
+  // Normalize to a valid plan id; default to "free"
+  const planId: PlanKey =
+    user?.plan && (user.plan in PLANS)
+      ? (user.plan as PlanKey)
+      : "free";
+
+  return { planId, plan: PLANS[planId] };
 }
 
 export async function getOrCreateUsage(userId: string, month = monthKey()) {
@@ -27,12 +41,13 @@ export async function checkCanStartInterview(
   requestedMinutes: number
 ) {
   const { planId, plan } = await getUserPlan(userId);
+
   if (requestedMinutes > plan.maxMinutesPerInterview) {
     return {
       ok: false,
       reason: `Your plan (${PLANS[planId].label}) allows up to ${plan.maxMinutesPerInterview} minutes per interview.`,
       code: "MAX_MINUTES",
-    };
+    } as const;
   }
 
   const usage = await getOrCreateUsage(userId);
@@ -41,7 +56,7 @@ export async function checkCanStartInterview(
       ok: false,
       reason: `You reached your monthly cap (${plan.monthlyInterviewCap} interviews) on ${PLANS[planId].label}.`,
       code: "MONTHLY_CAP",
-    };
+    } as const;
   }
 
   return { ok: true as const, planId };

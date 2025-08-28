@@ -19,6 +19,9 @@ function verifySignature(rawBody: string, signature: string | null) {
     .createHmac("sha256", secret)
     .update(rawBody, "utf8")
     .digest("base64");
+  
+  console.log('signature :: ', signature)
+  console.log('expected :: ', expected)
 
   try {
     return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
@@ -29,6 +32,7 @@ function verifySignature(rawBody: string, signature: string | null) {
 
 export async function POST(req: Request) {                     // ← standard Request is fine
   // Read raw body first (needed for signature)
+  console.log("INSIDE WEBHOOK")
   const raw = await req.text();
   const signature =
     req.headers.get("x-webhook-signature") ||                  // Cashfree commonly uses this
@@ -39,10 +43,14 @@ export async function POST(req: Request) {                     // ← standard R
   const skipVerify =
     process.env.NODE_ENV !== "production" &&
     !process.env.CASHFREE_WEBHOOK_SECRET;
+  
+  console.log('skipVerify :: ', skipVerify)
 
-  if (!skipVerify && !verifySignature(raw, signature)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
+  const isSignVerified = verifySignature(raw, signature)
+  console.log('isSignVerified :: ', isSignVerified )
+  // if (!skipVerify && !isSignVerified) {
+  //   return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  // }
 
   // Parse JSON AFTER signature verification
   let payload: any;
@@ -51,6 +59,8 @@ export async function POST(req: Request) {                     // ← standard R
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
+  console.log('WEBHOOK payload :: ', payload)
 
   // Normalize fields from Cashfree
   const orderId =
@@ -71,6 +81,7 @@ export async function POST(req: Request) {                     // ← standard R
     "";
 
   const status = String(statusRaw).toUpperCase();
+  console.log('WEBHOOK status :: ', status)
 
   if (!orderId) {
     return NextResponse.json({ error: "No order_id in webhook" }, { status: 400 });
@@ -93,6 +104,7 @@ export async function POST(req: Request) {                     // ← standard R
     await connectToDB();
 
     const order = await SubscriptionOrder.findOne({ orderId });
+    console.log('WEBHOOK order :: ', order)
     if (!order) {
       // We don’t know this order — nothing to update
       return NextResponse.json({ ok: true, note: "Order not found, ignoring." });

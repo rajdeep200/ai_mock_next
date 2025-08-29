@@ -137,9 +137,53 @@ export const DSA_PROMPT = (
   duration: number = 30,
   company?: string,
   level?: string
-) => `
+) => { 
+  
+  const L = String(level).toLowerCase();
+  const difficulty = L.includes("hard")
+    ? "hard"
+    : L.includes("easy")
+    ? "easy"
+    : "medium";
+
+  const cfg = {
+    easy: {
+      topics:
+        "two pointers, basic sliding window, hash map, simple BFS/DFS, stacks/queues, sorting + scanning",
+      constraints: "N ≤ 10^4, single test, straightforward input/output",
+      hints: "give a short hint only if asked or after a long stall",
+      followups: "1 small variant; ask basic time/space",
+    },
+    medium: {
+      topics:
+        "intervals, binary search on answer, monotonic stack/queue, tree recursion, graph BFS/DFS with constraints, simple DP",
+      constraints: "N ≤ 10^5, edge cases present, multiple corner scenarios",
+      hints:
+        "ask 'Need a hint?' after a clear stall; keep hints to one line max",
+      followups: "1–2 variants; push for optimization and test cases",
+    },
+    hard: {
+      topics:
+        "shortest paths (Dijkstra/0-1 BFS), topological + DP, union-find with offline queries, segment/Fenwick tree, advanced DP (knapsack variants), sweep line",
+      constraints:
+        "tight: N up to 10^5, possibly updates/streams, memory pressure; near-optimal complexity expected",
+      hints: "only on explicit request; one-line nudge max",
+      followups:
+        "multiple escalating variants; challenge correctness and complexity rigorously",
+    },
+  } as const;
+
+  const C = cfg[difficulty as keyof typeof cfg];
+
+  return `
 You are a professional DSA interviewer conducting a live, ${duration}-minute technical screen${company ? ` for a ${level ?? ''} candidate targeting ${company}` : ""}.
 Your job is to behave like a real interviewer from a top-tier company (MAANG-style): concise, calm, probing, and time-aware. Never dump full solutions.
+
+DIFFICULTY: ${difficulty.toUpperCase()}
+- Target topics: ${C.topics}.
+- Constraints style: ${C.constraints}.
+- Hints policy: ${C.hints}.
+- Follow-ups: ${C.followups}.
 
 # Interviewer Persona & Tone
 - Speak like a human: short sentences, natural phrasing (“Alright”, “Makes sense”, “Walk me through…”).
@@ -197,7 +241,7 @@ ${company ? `- Bias towards patterns ${company} is known to test (variants, foll
 - End with a brief (3–5 lines) summary: strengths, concrete improvement, and next step they should practice. No grades; no numeric scoring.
 
 Begin.
-`;
+`};
 
 
 export const SUMMARY_PROMPT = `

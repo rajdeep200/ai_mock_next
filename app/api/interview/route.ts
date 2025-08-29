@@ -1,6 +1,5 @@
 // app/api/interview/route.ts
 import OpenAI from 'openai';
-import { REACT_DEV_PROMPT } from '@/lib/prompts';
 import { NextRequest, NextResponse } from 'next/server';
 
 // db:

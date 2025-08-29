@@ -96,11 +96,6 @@ export default function HomePage() {
                 </h2>
                 <p className="text-green-300 italic">🚧 Testimonials coming soon...</p>
             </section>
-
-            {/* Footer */}
-            <footer className="w-full py-6 mt-12 border-t border-green-800 text-center text-sm text-green-400">
-                © {new Date().getFullYear()} MockQube · Built for DSA Legends 🧠
-            </footer>
         </main>
     )
 }

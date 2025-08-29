@@ -4,19 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import { SignedIn, SignedOut, SignInButton, useAuth } from "@clerk/nextjs";
 import {
-  FiMic,
-  FiMicOff,
-  FiVideo,
-  FiVideoOff,
-  FiX,
-  FiMessageSquare,
-  FiCode,
-  FiLoader,
+  FiMic, FiMicOff, FiVideo, FiVideoOff, FiX, FiMessageSquare, FiCode, FiLoader,
 } from "react-icons/fi";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getPromptsForInterview, SUMMARY_PROMPT } from "@/lib/prompts";
 
-// CHANGED: keep TTS helper, but we’ll also use it for proactive nudges
 const speak = (text: string, onEnd?: () => void) => {
   const normalizedText = text.replace(/\bO\(([^)]+)\)/g, "Big O of $1");
   const utterance = new SpeechSynthesisUtterance(normalizedText);
@@ -24,23 +17,14 @@ const speak = (text: string, onEnd?: () => void) => {
   utterance.rate = 1;
   utterance.pitch = 1;
   if (onEnd) utterance.onend = onEnd;
-  window.speechSynthesis.cancel(); // NEW: interrupt current speech before starting another
+  window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
 };
 
-// NEW: stage machine + timing constants
 type Stage = "intro" | "clarify" | "coding" | "review" | "wrapup";
-
-const NUDGE_THRESHOLDS_MS: Record<Stage, number> = {
-  intro: 15000,     // 15s of silence → nudge intro
-  clarify: 20000,   // 20s → nudge to ask constraints/IO/edges
-  coding: 60000,    // 60s → “need a hint / progress check?”
-  review: 20000,    // 20s → “let’s talk complexity/edges”
-  wrapup: 15000,    // 15s → “any questions before we close?”
-};
-
-const NUDGE_COOLDOWN_MS = 30000;       // NEW: don’t spam nudges
-const TIME_WARNINGS_S = [300, 120, 60]; // NEW: 5m, 2m, 1m remaining
+const NUDGE_THRESHOLDS_MS: Record<Stage, number> = { intro: 15000, clarify: 20000, coding: 60000, review: 20000, wrapup: 15000 };
+const NUDGE_COOLDOWN_MS = 30000;
+const TIME_WARNINGS_S = [300, 120, 60];
 
 export default function InterviewPage() {
   const [aiReply, setAiReply] = useState("");
@@ -50,36 +34,76 @@ export default function InterviewPage() {
   const [micOn, setMicOn] = useState(true);
   const [cameraOn, setCameraOn] = useState(true);
   const [userCode, setUserCode] = useState("");
+  const [ended, setEnded] = useState(false);
+  const endedRef = useRef(false);
 
-  // NEW: stage + time tracking
   const [stage, setStage] = useState<Stage>("intro");
   const [activeView, setActiveView] = useState<"question" | "editor">("question");
+
+  const searchParams = useSearchParams();
+  const requestedDuration = parseInt(searchParams.get("duration") ?? "15", 10);
+
+  // CHANGED: start as null so we **wait** for plan fetch before starting
+  const [allowedMinutes, setAllowedMinutes] = useState<number | null>(null); // NEW
+  const [planMax, setPlanMax] = useState<number | null>(null);
+  const [wasClamped, setWasClamped] = useState(false);
+
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
-  const endAtRef = useRef<number | null>(null);        // NEW
-  const lastActivityRef = useRef<number>(Date.now());  // NEW
-  const lastNudgeRef = useRef<number>(0);              // NEW
-  const warnedAtSecondsRef = useRef<Set<number>>(new Set()); // NEW: which warnings have fired
+  const endAtRef = useRef<number | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
+  const lastNudgeRef = useRef<number>(0);
+  const warnedAtSecondsRef = useRef<Set<number>>(new Set());
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const hasStartedRef = useRef(false);
 
   const { isSignedIn } = useAuth();
-  const searchParams = useSearchParams();
-
   const technology = searchParams.get("technology") ?? "React";
   const company = searchParams.get("company") ?? "";
   const level = searchParams.get("level") ?? "Junior";
-  const duration = parseInt(searchParams.get("duration") ?? "15", 10); // minutes
   const router = useRouter();
 
   const { transcript, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
-  // NEW: helper to mark user activity (typing, speaking, clicks)
-  const markActivity = () => {
-    lastActivityRef.current = Date.now();
-  };
+  const markActivity = () => { lastActivityRef.current = Date.now(); };
+
+  // NEW: fetch plan and clamp duration BEFORE starting
+  useEffect(() => {
+    if (!isSignedIn) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/plan", { cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) {
+            setAllowedMinutes(requestedDuration); // fallback
+            setPlanMax(null);
+            setWasClamped(false);
+          }
+          return;
+        }
+        const data = await res.json();
+        const max = Number(data?.plan?.maxMinutesPerInterview ?? requestedDuration);
+        const clamped = Math.min(requestedDuration, max);
+        if (!cancelled) {
+          setPlanMax(max);
+          setAllowedMinutes(clamped);
+          setWasClamped(clamped !== requestedDuration);
+        }
+      } catch {
+        if (!cancelled) {
+          setAllowedMinutes(requestedDuration); // fallback on error
+          setPlanMax(null);
+          setWasClamped(false);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isSignedIn, requestedDuration]);
 
   // Camera lifecycle
   useEffect(() => {
@@ -97,27 +121,28 @@ export default function InterviewPage() {
     });
   }, [cameraOn]);
 
-  // Voice → text capture loop
+  // Voice → text capture
   useEffect(() => {
     if (!transcript.trim()) return;
-    window.speechSynthesis.cancel(); // stop TTS if the user talks
+    window.speechSynthesis.cancel();
     const timeout = setTimeout(() => {
       const spoken = transcript.trim();
       resetTranscript();
-      markActivity();                         // NEW
+      markActivity();
       sendMessage(spoken);
     }, 1500);
     return () => clearTimeout(timeout);
   }, [transcript, resetTranscript]);
 
   const startListening = () => {
+    if (endedRef.current) return;
     if (browserSupportsSpeechRecognition && micOn) {
       resetTranscript();
       SpeechRecognition.startListening({ continuous: true, language: "en-US" });
     }
   };
 
-  // Clean up on unload
+  // Clean up
   useEffect(() => {
     const cleanUp = () => {
       window.speechSynthesis.cancel();
@@ -128,24 +153,22 @@ export default function InterviewPage() {
       }
     };
     window.addEventListener("beforeunload", cleanUp);
-    return () => {
-      window.removeEventListener("beforeunload", cleanUp);
-      cleanUp();
-    };
+    return () => { window.removeEventListener("beforeunload", cleanUp); cleanUp(); };
   }, []);
 
-  // Start of interview (first AI turn), set timers
+  // CHANGED: Start interview only after allowedMinutes is known (not null)
   useEffect(() => {
     if (!isSignedIn || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
+    if (allowedMinutes === null) return; // NEW: wait for plan check
+
     hasStartedRef.current = true;
 
-    // NEW: initialize timer window for the whole interview
-    endAtRef.current = Date.now() + duration * 60 * 1000;
-    setTimeLeft(duration * 60);
+    endAtRef.current = Date.now() + allowedMinutes * 60 * 1000; // CHANGED
+    setTimeLeft(allowedMinutes * 60);                            // CHANGED
 
     const startInterview = async () => {
       setLoading(true);
-      const prompt = getPromptsForInterview(technology, duration, company, level);
+      const prompt = getPromptsForInterview(technology, allowedMinutes, company, level); // CHANGED
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,28 +181,24 @@ export default function InterviewPage() {
       setAiReply(data.reply);
       setLoading(false);
 
-      markActivity(); // NEW
-      setStage("intro"); // NEW
+      markActivity();
+      setStage("intro");
       setTimeout(() => speak(data.reply, () => micOn && startListening()), 400);
     };
     startInterview();
-  }, [isSignedIn, browserSupportsSpeechRecognition, company, duration, level, technology, micOn]);
+  }, [isSignedIn, browserSupportsSpeechRecognition, company, level, technology, micOn, allowedMinutes]);
 
-  // CHANGED: Standard message send
   const sendMessage = async (userInput: string) => {
+    if (endedRef.current) return;
     setLoading(true);
-    // NEW: stage heuristics from user text (very lightweight, optional)
-    if (/start.*code|let.?s code|i'?ll start/i.test(userInput)) {
-      setStage("coding");
-    } else if (/complexity|big ?o/i.test(userInput)) {
-      setStage("review");
-    }
+    if (/start.*code|let.?s code|i'?ll start/i.test(userInput)) setStage("coding");
+    else if (/complexity|big ?o/i.test(userInput)) setStage("review");
 
     const userMsg = { role: "user" as const, content: userInput };
     const newHistory = [...history, userMsg];
     setHistory(newHistory);
 
-    const prompt = getPromptsForInterview(technology, duration, company, level);
+    const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level); // CHANGED (safety)
     const res = await fetch("/api/interview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -193,11 +212,10 @@ export default function InterviewPage() {
     setLoading(false);
     setActiveView("question");
 
-    markActivity(); // NEW
+    markActivity();
     speak(data.reply, () => micOn && startListening());
   };
 
-  // NEW: assistant push (no LLM call) for short nudges/time checks
   const assistantPush = (text: string) => {
     const msg = { role: "assistant" as const, content: text };
     setHistory((h) => [...h, msg]);
@@ -205,34 +223,23 @@ export default function InterviewPage() {
     speak(text, () => micOn && startListening());
   };
 
-  // NEW: choose a short, human nudge based on stage
-  const makeNudge = (st: Stage): string => {
-    switch (st) {
-      case "intro":
-        return "Ready when you are—give me a brief intro and we’ll jump into code.";
-      case "clarify":
-        return "Feel free to ask specifics—input format, constraints, or tricky edge cases.";
-      case "coding":
-        return "How’s it going? Want a hint, a quick test case, or to discuss complexity?";
-      case "review":
-        return "Let’s cover complexity and edge cases next. Ready?";
-      case "wrapup":
-        return "Any last questions before we wrap?";
-      default:
-        return "All good on your side?";
-    }
-  };
-
-  // NEW: proactive nudging loop (silence → nudge)
+  // Proactive loop + HARD STOP at 0s
   useEffect(() => {
     const tick = setInterval(() => {
       if (!endAtRef.current) return;
 
-      // update countdown
       const secsLeft = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000));
       setTimeLeft(secsLeft);
 
-      // time warnings
+      // NEW: hard stop when time is up
+      if (secsLeft === 0 && !endedRef.current) {
+        endedRef.current = true;
+        setEnded(true);
+        assistantPush("Time’s up — I’ll finalize your feedback now.");
+        void handleEndInterview(); // reuse same end flow
+        return;
+      }
+
       for (const warn of TIME_WARNINGS_S) {
         if (secsLeft <= warn && !warnedAtSecondsRef.current.has(warn)) {
           warnedAtSecondsRef.current.add(warn);
@@ -242,12 +249,8 @@ export default function InterviewPage() {
         }
       }
 
-      // near the end, move to wrapup if not already
-      if (secsLeft <= 30 && stage !== "wrapup") {
-        setStage("wrapup");
-      }
+      if (secsLeft <= 30 && stage !== "wrapup") setStage("wrapup");
 
-      // idle → nudge
       const idleFor = Date.now() - lastActivityRef.current;
       const threshold = NUDGE_THRESHOLDS_MS[stage];
       const sinceLastNudge = Date.now() - lastNudgeRef.current;
@@ -261,20 +264,24 @@ export default function InterviewPage() {
     return () => clearInterval(tick);
   }, [stage]);
 
-  // NEW: switch to coding stage when editor is opened
-  useEffect(() => {
-    if (activeView === "editor" && stage === "clarify") {
-      setStage("coding");
+  const makeNudge = (st: Stage): string => {
+    switch (st) {
+      case "intro": return "Ready when you are—give me a brief intro and we’ll jump into code.";
+      case "clarify": return "Feel free to ask specifics—input format, constraints, or tricky edge cases.";
+      case "coding": return "How’s it going? Want a hint, a quick test case, or to discuss complexity?";
+      case "review": return "Let’s cover complexity and edge cases next. Ready?";
+      case "wrapup": return "Any last questions before we wrap?";
+      default: return "All good on your side?";
     }
+  };
+
+  useEffect(() => {
+    if (activeView === "editor" && stage === "clarify") setStage("coding");
     if (activeView === "editor") markActivity();
   }, [activeView, stage]);
 
-  // NEW: track typing as activity
-  useEffect(() => {
-    if (userCode) markActivity();
-  }, [userCode]);
+  useEffect(() => { if (userCode) markActivity(); }, [userCode]);
 
-  // mic toggle
   const toggleMic = () => {
     const newMicState = !micOn;
     setMicOn(newMicState);
@@ -284,19 +291,20 @@ export default function InterviewPage() {
     } else {
       SpeechRecognition.stopListening();
     }
-    markActivity(); // NEW
+    markActivity();
   };
 
-  // End interview
   const handleEndInterview = async () => {
+    if (endedRef.current) return;
+    endedRef.current = true;
+    setEnded(true);
+
     setEndLoading(true);
     setCameraOn(false);
     window.speechSynthesis.cancel();
     SpeechRecognition.stopListening();
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    if (videoRef.current) videoRef.current.srcObject = null;
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
@@ -308,10 +316,7 @@ export default function InterviewPage() {
         const resSummary = await fetch("/api/interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemPrompt: SUMMARY_PROMPT,
-            messages: history,
-          }),
+          body: JSON.stringify({ systemPrompt: SUMMARY_PROMPT, messages: history }),
         });
         const { reply: feedback } = await resSummary.json();
 
@@ -326,19 +331,20 @@ export default function InterviewPage() {
         setEndLoading(false);
       }
     }
+
     router.push("/start-interview");
   };
 
-  // Code submit → move to review and ask follow-ups
   const handleCodeSubmit = async () => {
+    if (endedRef.current) return;
     if (!userCode.trim()) return;
 
     setLoading(true);
-    setStage("review"); // NEW
+    setStage("review");
     const userMsg = { role: "user" as const, content: `Here is my code:\n${userCode.trim()}` };
     const newHistory = [...history, userMsg];
 
-    const prompt = getPromptsForInterview(technology, duration, company, level);
+    const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level); // CHANGED
     const res = await fetch("/api/interview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -352,9 +358,8 @@ export default function InterviewPage() {
     setLoading(false);
     setActiveView("question");
 
-    markActivity(); // NEW
+    markActivity();
     speak(data.reply, () => {
-      // NEW: after initial feedback, proactively follow up like a real interviewer
       setTimeout(() => {
         assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
       }, 1200);
@@ -369,21 +374,32 @@ export default function InterviewPage() {
           <header className="flex justify-between items-center w-full">
             <h1 className="text-lg sm:text-xl font-semibold text-green-400">Mock Interview</h1>
             <div className="flex items-center gap-4">
-              {/* NEW: tiny time-left badge */}
               <span className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700">
                 ⏱ {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
               </span>
               <button
                 onClick={handleEndInterview}
-                disabled={endLoading}
+                disabled={endLoading || ended}
                 className={`flex items-center gap-2 text-sm font-medium transition-colors
-                  ${endLoading ? "text-gray-400 cursor-not-allowed" : "text-red-500 hover:text-red-400 cursor-pointer"}`}
+                  ${endLoading || ended ? "text-gray-400 cursor-not-allowed" : "text-red-500 hover:text-red-400 cursor-pointer"}`}
               >
                 {endLoading ? <FiLoader className="animate-spin" size={18} /> : <FiX size={18} />}
-                {endLoading ? " Ending…" : " End Interview"}
+                {endLoading ? " Ending…" : ended ? "Ended" : " End Interview"}
               </button>
             </div>
           </header>
+
+          {/* NEW: block UI until plan check done */}
+          {allowedMinutes === null ? (
+            <div className="w-full max-w-3xl mx-auto bg-gray-900 border border-gray-800 rounded-md p-4 text-gray-300 flex items-center gap-2">
+              <FiLoader className="animate-spin" /> Preparing your interview…
+            </div>
+          ) : wasClamped ? (
+            <div className="w-full max-w-3xl mx-auto bg-yellow-900/40 border border-yellow-700 text-yellow-200 text-sm rounded-md px-3 py-2">
+              Requested duration was {requestedDuration} min, but your plan allows max {planMax} min. Adjusted to <b>{allowedMinutes} min</b>.{" "}
+              <Link href="/pricing" className="underline text-yellow-300 hover:text-yellow-200">Upgrade your plan</Link> for longer sessions.
+            </div>
+          ) : null}
 
           {/* Video Feed and Controls */}
           <section className="flex flex-col items-center justify-center gap-3">
@@ -398,10 +414,14 @@ export default function InterviewPage() {
               )}
             </div>
             <div className="flex gap-4">
-              <button onClick={toggleMic} className={`p-3 rounded-full ${micOn ? "bg-red-600" : "bg-green-600"} hover:opacity-90 transition`}>
+              <button onClick={toggleMic} disabled={ended} className={`p-3 rounded-full ${micOn ? "bg-red-600" : "bg-green-600"} hover:opacity-90 transition disabled:opacity-50`}>
                 {micOn ? <FiMicOff size={20} /> : <FiMic size={20} />}
               </button>
-              <button onClick={() => { setCameraOn(!cameraOn); markActivity(); }} className={`p-3 rounded-full ${cameraOn ? "bg-red-600" : "bg-green-600"} hover:opacity-90 transition`}>
+              <button
+                onClick={() => { if (!ended) { setCameraOn(!cameraOn); markActivity(); } }}
+                disabled={ended}
+                className={`p-3 rounded-full ${cameraOn ? "bg-red-600" : "bg-green-600"} hover:opacity-90 transition disabled:opacity-50`}
+              >
                 {cameraOn ? <FiVideoOff size={20} /> : <FiVideo size={20} />}
               </button>
             </div>
@@ -410,29 +430,25 @@ export default function InterviewPage() {
             </div>
           </section>
 
-          {/* Main Workspace Area */}
+          {/* Main Area */}
           <section className="flex-1 flex flex-col bg-gray-900/60 backdrop-blur-sm rounded-xl border border-gray-800 overflow-hidden">
-            {/* Tabs */}
             <div className="flex border-b border-gray-700">
               <button
                 onClick={() => { setActiveView("question"); markActivity(); }}
-                className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all ${
-                  activeView === "question" ? "bg-green-900/50 text-green-300 border-b-2 border-green-400" : "text-gray-400 hover:bg-gray-800"
-                }`}
+                className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all ${activeView === "question" ? "bg-green-900/50 text-green-300 border-b-2 border-green-400" : "text-gray-400 hover:bg-gray-800"
+                  }`}
               >
                 <FiMessageSquare /> Question
               </button>
               <button
                 onClick={() => { setActiveView("editor"); if (stage === "clarify") setStage("coding"); markActivity(); }}
-                className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all ${
-                  activeView === "editor" ? "bg-green-900/50 text-green-300 border-b-2 border-green-400" : "text-gray-400 hover:bg-gray-800"
-                }`}
+                className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all ${activeView === "editor" ? "bg-green-900/50 text-green-300 border-b-2 border-green-400" : "text-gray-400 hover:bg-gray-800"
+                  }`}
               >
                 <FiCode /> Code Editor
               </button>
             </div>
 
-            {/* Tab Content */}
             <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
               {activeView === "question" && (
                 <div className="flex flex-col items-center justify-center h-full text-center">
@@ -455,7 +471,7 @@ export default function InterviewPage() {
                     value={userCode}
                     onChange={(e) => { setUserCode(e.target.value); markActivity(); }}
                   />
-                  <button onClick={handleCodeSubmit} className="mt-4 self-end bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors">
+                  <button onClick={handleCodeSubmit} disabled={ended} className="mt-4 self-end bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50">
                     Submit Code
                   </button>
                 </div>

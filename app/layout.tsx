@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/component/Header";
 import RegisterUser from "@/component/RegisterUser";
+import Footer from "@/component/Footer"; // ← add this
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,18 +27,24 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <ClerkProvider>
       <html lang="en">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white`}
         >
-          <Header />
-          <RegisterUser />
-          {children}
+          {/* Make the whole app a column to pin footer at bottom */}
+          <div className="min-h-screen flex flex-col">
+            <Header />
+            <RegisterUser />
+
+            {/* Page content grows */}
+            <main className="flex-1">{children}</main>
+
+            {/* Global footer */}
+            <Footer />
+          </div>
         </body>
       </html>
     </ClerkProvider>

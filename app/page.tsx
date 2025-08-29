@@ -107,11 +107,6 @@ export default function LandingPage() {
           </button>
         </Link>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-black border-t border-green-800 py-6 text-center text-sm text-green-400">
-        © {new Date().getFullYear()} MockQube · All rights reserved
-      </footer>
     </main>
   )
 }

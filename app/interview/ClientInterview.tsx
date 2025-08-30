@@ -26,6 +26,9 @@ const NUDGE_THRESHOLDS_MS: Record<Stage, number> = { intro: 15000, clarify: 2000
 const NUDGE_COOLDOWN_MS = 30000;
 const TIME_WARNINGS_S = [300, 120, 60];
 
+const END_TOKEN_REGEX = /\[?\bEND\s*INTERVIEW\b\]?/i;
+const containsEndToken = (text: string) => END_TOKEN_REGEX.test(text)
+
 export default function InterviewPage() {
   const [aiReply, setAiReply] = useState("");
   const [history, setHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
@@ -181,6 +184,11 @@ export default function InterviewPage() {
       setAiReply(data.reply);
       setLoading(false);
 
+      if (containsEndToken(data.reply)) {
+        await handleEndInterview({ auto: true });
+        return;
+      }
+
       markActivity();
       setStage("intro");
       setTimeout(() => speak(data.reply, () => micOn && startListening()), 400);
@@ -213,6 +221,12 @@ export default function InterviewPage() {
     setActiveView("question");
 
     markActivity();
+
+    if (containsEndToken(data.reply)) {
+      await handleEndInterview({ auto: true });
+      return;
+    }
+
     speak(data.reply, () => micOn && startListening());
   };
 
@@ -251,29 +265,29 @@ export default function InterviewPage() {
 
       if (secsLeft <= 30 && stage !== "wrapup") setStage("wrapup");
 
-      const idleFor = Date.now() - lastActivityRef.current;
-      const threshold = NUDGE_THRESHOLDS_MS[stage];
-      const sinceLastNudge = Date.now() - lastNudgeRef.current;
+      // const idleFor = Date.now() - lastActivityRef.current;
+      // const threshold = NUDGE_THRESHOLDS_MS[stage];
+      // const sinceLastNudge = Date.now() - lastNudgeRef.current;
 
-      if (idleFor >= threshold && sinceLastNudge >= NUDGE_COOLDOWN_MS) {
-        lastNudgeRef.current = Date.now();
-        assistantPush(makeNudge(stage));
-      }
+      // if (idleFor >= threshold && sinceLastNudge >= NUDGE_COOLDOWN_MS) {
+      //   lastNudgeRef.current = Date.now();
+      //   assistantPush(makeNudge(stage));
+      // }
     }, 1000);
 
     return () => clearInterval(tick);
   }, [stage]);
 
-  const makeNudge = (st: Stage): string => {
-    switch (st) {
-      case "intro": return "Ready when you are—give me a brief intro and we’ll jump into code.";
-      case "clarify": return "Feel free to ask specifics—input format, constraints, or tricky edge cases.";
-      case "coding": return "How’s it going? Want a hint, a quick test case, or to discuss complexity?";
-      case "review": return "Let’s cover complexity and edge cases next. Ready?";
-      case "wrapup": return "Any last questions before we wrap?";
-      default: return "All good on your side?";
-    }
-  };
+  // const makeNudge = (st: Stage): string => {
+  //   switch (st) {
+  //     case "intro": return "Ready when you are—give me a brief intro and we’ll jump into code.";
+  //     case "clarify": return "Feel free to ask specifics—input format, constraints, or tricky edge cases.";
+  //     case "coding": return "How’s it going? Want a hint, a quick test case, or to discuss complexity?";
+  //     case "review": return "Let’s cover complexity and edge cases next. Ready?";
+  //     case "wrapup": return "Any last questions before we wrap?";
+  //     default: return "All good on your side?";
+  //   }
+  // };
 
   useEffect(() => {
     if (activeView === "editor" && stage === "clarify") setStage("coding");
@@ -294,13 +308,16 @@ export default function InterviewPage() {
     markActivity();
   };
 
-  const handleEndInterview = async () => {
+  const handleEndInterview = async (opts?: { auto?: boolean }) => {
     if (endedRef.current) return;
     endedRef.current = true;
     setEnded(true);
 
     setEndLoading(true);
     setCameraOn(false);
+
+    endAtRef.current = null;
+
     window.speechSynthesis.cancel();
     SpeechRecognition.stopListening();
 
@@ -359,6 +376,12 @@ export default function InterviewPage() {
     setActiveView("question");
 
     markActivity();
+
+    if (containsEndToken(data.reply)) {
+      await handleEndInterview({ auto: true });
+      return;
+    }
+
     speak(data.reply, () => {
       setTimeout(() => {
         assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
@@ -378,7 +401,7 @@ export default function InterviewPage() {
                 ⏱ {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
               </span>
               <button
-                onClick={handleEndInterview}
+                onClick={() => void handleEndInterview()}
                 disabled={endLoading || ended}
                 className={`flex items-center gap-2 text-sm font-medium transition-colors
                   ${endLoading || ended ? "text-gray-400 cursor-not-allowed" : "text-red-500 hover:text-red-400 cursor-pointer"}`}

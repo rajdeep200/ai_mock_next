@@ -133,12 +133,75 @@ export const getPromptsForInterview = (topic: string, duration: number=30, compa
 // - Sorting, Searching
 // - Bit Manipulation
 
+export const TOPIC_POOLS = {
+  easy: [
+    "Arrays & Hashing (frequency maps)",
+    "Two Pointers (basic)",
+    "Sliding Window (fixed window)",
+    "Strings (basic parsing)",
+    "Binary Search (on sorted arrays)",
+    "Linked List (basics)",
+    "Stack / Queue (parentheses, min stack idea)",
+    "Prefix Sum (simple)",
+    "Set / Deduping problems",
+    "Math & Counting (simple)",
+  ],
+  medium: [
+    "Two Pointers (advanced merges / partitions)",
+    "Sliding Window (variable window)",
+    "Binary Search on Answer",
+    "Monotonic Stack (next greater element, spans)",
+    "Greedy (intervals, scheduling)",
+    "Trees (DFS/BFS, LCA lite)",
+    "Heaps / Priority Queue (k-smallest/largest, merging)",
+    "Hashing + Prefix/Suffix tricks",
+    "Backtracking (combinatorics)",
+    "Tries (prefix problems)",
+    "Union-Find (connectivity basics)",
+  ],
+  hard: [
+    "Dynamic Programming (paths, knapsack variants, LIS/LCS)",
+    "DP on Trees / Graphs",
+    "Graph Shortest Paths (Dijkstra / 0-1 BFS)",
+    "Topological Sort + DAG DP",
+    "Greedy with Proof (exchange arguments)",
+    "Segment Tree / Fenwick Tree (range queries)",
+    "Advanced Sliding Window or Two Pointers",
+    "String Algorithms (KMP/Z, rolling hash)",
+    "Flows / Matching (lightweight if needed)",
+    "Hard Backtracking with pruning",
+    "Binary Search on Answer (tricky constraints)",
+  ],
+};
+
+/** Normalize user level string into easy/medium/hard */
+export function normalizeLevel(level?: string) {
+  const l = (level || "").toLowerCase();
+  if (l.includes("hard") || l.includes("senior")) return "hard";
+  if (l.includes("easy") || l.includes("junior")) return "easy";
+  return "medium";
+}
+
+/** Optional seeded pick for stable topic (e.g., seed with sessionId) */
+export function pickTopicByLevel(level?: string, seed?: string): string {
+  const key = normalizeLevel(level);
+  const pool = TOPIC_POOLS[key];
+  if (!seed) {
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  // deterministic index from seed
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return pool[h % pool.length];
+}
+
 export const DSA_PROMPT = (
   duration: number = 30,
   company?: string,
   level?: string
 ) => { 
   
+  const topic = pickTopicByLevel(level);
   const L = String(level).toLowerCase();
   const difficulty = L.includes("hard")
     ? "hard"
@@ -148,23 +211,17 @@ export const DSA_PROMPT = (
 
   const cfg = {
     easy: {
-      topics:
-        "two pointers, basic sliding window, hash map, simple BFS/DFS, stacks/queues, sorting + scanning",
       constraints: "N ≤ 10^4, single test, straightforward input/output",
       hints: "give a short hint only if asked or after a long stall",
       followups: "1 small variant; ask basic time/space",
     },
     medium: {
-      topics:
-        "intervals, binary search on answer, monotonic stack/queue, tree recursion, graph BFS/DFS with constraints, simple DP",
       constraints: "N ≤ 10^5, edge cases present, multiple corner scenarios",
       hints:
         "ask 'Need a hint?' after a clear stall; keep hints to one line max",
       followups: "1–2 variants; push for optimization and test cases",
     },
     hard: {
-      topics:
-        "shortest paths (Dijkstra/0-1 BFS), topological + DP, union-find with offline queries, segment/Fenwick tree, advanced DP (knapsack variants), sweep line",
       constraints:
         "tight: N up to 10^5, possibly updates/streams, memory pressure; near-optimal complexity expected",
       hints: "only on explicit request; one-line nudge max",
@@ -180,7 +237,7 @@ You are a professional DSA interviewer conducting a live, ${duration}-minute tec
 Your job is to behave like a real interviewer from a top-tier company (MAANG-style): concise, calm, probing, and time-aware. Never dump full solutions.
 
 DIFFICULTY: ${difficulty.toUpperCase()}
-- Target topics: ${C.topics}.
+- Target topics: ${topic}.
 - Constraints style: ${C.constraints}.
 - Hints policy: ${C.hints}.
 - Follow-ups: ${C.followups}.

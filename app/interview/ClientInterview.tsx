@@ -300,8 +300,8 @@ export default function InterviewPage() {
 
       // Single, bullet-proof stop condition
       if (secsLeft <= 0 && !endedRef.current) {
-        endedRef.current = true;              // gate re-entry immediately
-        setEnded(true);
+        // endedRef.current = true;              // gate re-entry immediately
+        // setEnded(true);
         // No TTS here; just end + redirect
         void handleEndInterview({ auto: true });
         return;

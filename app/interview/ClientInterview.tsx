@@ -291,65 +291,55 @@ export default function InterviewPage() {
   // Proactive loop + HARD STOP at 0s
   useEffect(() => {
     const tick = setInterval(() => {
+      // If we haven't started, bail.
       if (endAtRef.current === undefined) return;
 
-      const secsLeft = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000));
-      setTimeLeft(secsLeft);
+      const secsLeft = Math.ceil((endAtRef.current - Date.now()) / 1000);
+      const safeSecsLeft = Math.max(0, secsLeft); // never negative in UI
+      setTimeLeft(safeSecsLeft);
 
-      // NEW: hard stop when time is up
-      if (secsLeft === 0 && !endedRef.current) {
-        endedRef.current = true;
+      // Single, bullet-proof stop condition
+      if (secsLeft <= 0 && !endedRef.current) {
+        endedRef.current = true;              // gate re-entry immediately
         setEnded(true);
-        assistantPush("Time’s up — I’ll finalize your feedback now.");
-        void handleEndInterview(); // reuse same end flow
+        // No TTS here; just end + redirect
+        void handleEndInterview({ auto: true });
         return;
       }
 
+      // Time warnings (only while > 0)
       for (const warn of TIME_WARNINGS_S) {
-        if (secsLeft <= warn && !warnedAtSecondsRef.current.has(warn)) {
+        if (safeSecsLeft <= warn && !warnedAtSecondsRef.current.has(warn)) {
           warnedAtSecondsRef.current.add(warn);
           assistantPush(
-            warn >= 120 ? `Time check: about ${Math.round(warn / 60)} minutes left.` : "About 1 minute left—try to finalize your approach."
+            warn >= 120
+              ? `Time check: about ${Math.round(warn / 60)} minutes left.`
+              : "About 1 minute left—try to finalize your approach."
           );
         }
       }
 
-      if (secsLeft <= 30 && stage !== "wrapup") setStage("wrapup");
+      if (safeSecsLeft <= 30 && stage !== "wrapup") setStage("wrapup");
 
-      // const idleFor = Date.now() - lastActivityRef.current;
-      // const threshold = NUDGE_THRESHOLDS_MS[stage];
-      // const sinceLastNudge = Date.now() - lastNudgeRef.current;
-
-      // if (idleFor >= threshold && sinceLastNudge >= NUDGE_COOLDOWN_MS) {
-      //   lastNudgeRef.current = Date.now();
-      //   assistantPush(makeNudge(stage));
-      // }
-
+      // Silence detector (unchanged)
       const now = Date.now();
       const userIdle = now - lastActivityRef.current;
       const aiIdle = now - lastAgentActivityRef.current;
 
       if (
-        userIdle >= 120_000 &&          // user silent ≥ 2 min
-        aiIdle >= 120_000 &&          // AI also hasn’t spoken ≥ 2 min
-        !silenceTriggeredRef.current && // only once until activity resumes
+        userIdle >= 120_000 &&
+        aiIdle >= 120_000 &&
+        !silenceTriggeredRef.current &&
         !endedRef.current
       ) {
-        silenceTriggeredRef.current = true; // gate immediately
+        silenceTriggeredRef.current = true;
         void sendSilenceSystemEvent();
-      }
-
-      if (secsLeft <= 0 && !endedRef.current) {
-        // Optionally show a last system line in UI (no TTS to avoid overlap)
-        setAiReply("Time’s up. Ending the interview and saving your session…");
-        // end immediately; mark as auto so you can branch if needed
-        handleEndInterview({ auto: true });
-        return; // bail out this tick
       }
     }, 1000);
 
     return () => clearInterval(tick);
   }, [stage, micOn]);
+
 
   // const makeNudge = (st: Stage): string => {
   //   switch (st) {
@@ -388,11 +378,11 @@ export default function InterviewPage() {
 
     setEndLoading(true);
     setCameraOn(false);
-
     endAtRef.current = undefined;
 
-    window.speechSynthesis.cancel();
-    SpeechRecognition.stopListening();
+    // Stop all audio/video immediately
+    try { window.speechSynthesis.cancel(); } catch { }
+    try { SpeechRecognition.stopListening(); } catch { }
 
     if (videoRef.current) videoRef.current.srcObject = null;
     if (mediaStreamRef.current) {
@@ -401,29 +391,39 @@ export default function InterviewPage() {
     }
 
     const sessionId = searchParams.get("sessionId");
-    if (sessionId) {
-      try {
+
+    try {
+      if (sessionId) {
+        // Generate feedback
         const resSummary = await fetch("/api/interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ systemPrompt: SUMMARY_PROMPT, messages: history }),
         });
-        const { reply: feedback } = await resSummary.json();
 
+        let feedback = "";
+        if (resSummary.ok) {
+          const { reply } = await resSummary.json();
+          feedback = reply ?? "";
+        }
+
+        // Persist interview completion + feedback
         await fetch("/api/update-interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, feedback }),
         });
-      } catch (e) {
-        console.error("Error sending final feedback", e);
-      } finally {
-        setEndLoading(false);
       }
+    } catch (e) {
+      console.error("Error finalizing interview", e);
+      // We still redirect even if saving fails.
+    } finally {
+      setEndLoading(false);
+      // ⬇️ Redirect to HOME (change "/" if your home route differs)
+      router.replace("/");
     }
-
-    router.push("/start-interview");
   };
+
 
   const handleCodeSubmit = async () => {
     if (endedRef.current) return;
@@ -488,7 +488,7 @@ export default function InterviewPage() {
           </header>
 
           {/* NEW: block UI until plan check done */}
-          {allowedMinutes === null ? (
+          {allowedMinutes === undefined ? (
             <div className="w-full max-w-3xl mx-auto bg-gray-900 border border-gray-800 rounded-md p-4 text-gray-300 flex items-center gap-2">
               <FiLoader className="animate-spin" /> Preparing your interview…
             </div>

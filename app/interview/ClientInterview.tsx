@@ -28,10 +28,11 @@ const TIME_WARNINGS_S = [300, 120, 60];
 
 const END_TOKEN_REGEX = /\[?\bEND\s*INTERVIEW\b\]?/i;
 const containsEndToken = (text: string) => END_TOKEN_REGEX.test(text)
+type ChatRole = "user" | "assistant" | "system";
 
 export default function InterviewPage() {
   const [aiReply, setAiReply] = useState("");
-  const [history, setHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [history, setHistory] = useState<{ role: ChatRole; content: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [endLoading, setEndLoading] = useState(false);
   const [micOn, setMicOn] = useState(true);
@@ -47,13 +48,13 @@ export default function InterviewPage() {
   const requestedDuration = parseInt(searchParams.get("duration") ?? "15", 10);
 
   // CHANGED: start as null so we **wait** for plan fetch before starting
-  const [allowedMinutes, setAllowedMinutes] = useState<number | null>(null); // NEW
+  const [allowedMinutes, setAllowedMinutes] = useState<number | undefined>(undefined); // NEW
   const [planMax, setPlanMax] = useState<number | null>(null);
   const [wasClamped, setWasClamped] = useState(false);
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
-  const endAtRef = useRef<number | null>(null);
+  const endAtRef = useRef<number | undefined>(undefined);
   const lastActivityRef = useRef<number>(Date.now());
   const lastNudgeRef = useRef<number>(0);
   const warnedAtSecondsRef = useRef<Set<number>>(new Set());
@@ -61,6 +62,10 @@ export default function InterviewPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const hasStartedRef = useRef(false);
+
+  const lastAgentActivityRef = useRef<number>(Date.now());   // when AI last spoke
+  const silenceTriggeredRef = useRef<boolean>(false);        // avoid spamming
+
 
   const { isSignedIn } = useAuth();
   const technology = searchParams.get("technology") ?? "React";
@@ -70,7 +75,10 @@ export default function InterviewPage() {
 
   const { transcript, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
-  const markActivity = () => { lastActivityRef.current = Date.now(); };
+  const markActivity = () => {
+    lastActivityRef.current = Date.now();
+    silenceTriggeredRef.current = false;
+  };
 
   // NEW: fetch plan and clamp duration BEFORE starting
   useEffect(() => {
@@ -162,7 +170,7 @@ export default function InterviewPage() {
   // CHANGED: Start interview only after allowedMinutes is known (not null)
   useEffect(() => {
     if (!isSignedIn || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
-    if (allowedMinutes === null) return; // NEW: wait for plan check
+    if (allowedMinutes === undefined) return; // NEW: wait for plan check
 
     hasStartedRef.current = true;
 
@@ -182,6 +190,8 @@ export default function InterviewPage() {
       const assistantMsg = { role: "assistant" as const, content: data.reply };
       setHistory([assistantMsg]);
       setAiReply(data.reply);
+      lastAgentActivityRef.current = Date.now();
+      silenceTriggeredRef.current = false;
       setLoading(false);
 
       if (containsEndToken(data.reply)) {
@@ -217,6 +227,8 @@ export default function InterviewPage() {
     const assistantMsg = { role: "assistant" as const, content: data.reply };
     setHistory([...newHistory, assistantMsg]);
     setAiReply(data.reply);
+    lastAgentActivityRef.current = Date.now();
+    silenceTriggeredRef.current = false;
     setLoading(false);
     setActiveView("question");
 
@@ -230,17 +242,56 @@ export default function InterviewPage() {
     speak(data.reply, () => micOn && startListening());
   };
 
+  const sendSilenceSystemEvent = async () => {
+    if (endedRef.current || loading) return; // don't overlap
+    try {
+      const sys: { role: ChatRole; content: string } = {
+        role: "system",
+        content:
+          "The candidate has been silent for more than 2 minutes. Briefly check in (≤1 sentence) and ask if they need a hint or have any issue."
+      };
+
+      const newHistory = [...history, sys];
+      setHistory(newHistory);
+
+      setLoading(true);
+      const prompt = getPromptsForInterview(technology, allowedMinutes, company, level);
+      const res = await fetch("/api/interview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newHistory, systemPrompt: prompt }),
+      });
+      const data = await res.json();
+
+      const assistantMsg = { role: "assistant" as const, content: data.reply };
+      setHistory([...newHistory, assistantMsg]);
+      setAiReply(data.reply);
+
+      // Mark AI activity + open mic again
+      lastAgentActivityRef.current = Date.now();
+      silenceTriggeredRef.current = true; // do not re-trigger until user/AI acts
+      setLoading(false);
+      speak(data.reply, () => micOn && startListening());
+    } catch (e) {
+      console.error("[SILENCE_EVENT_ERROR]", e);
+      setLoading(false);
+    }
+  };
+
+
   const assistantPush = (text: string) => {
     const msg = { role: "assistant" as const, content: text };
     setHistory((h) => [...h, msg]);
     setAiReply(text);
+    lastAgentActivityRef.current = Date.now();
+    silenceTriggeredRef.current = false;
     speak(text, () => micOn && startListening());
   };
 
   // Proactive loop + HARD STOP at 0s
   useEffect(() => {
     const tick = setInterval(() => {
-      if (!endAtRef.current) return;
+      if (endAtRef.current === undefined) return;
 
       const secsLeft = Math.max(0, Math.ceil((endAtRef.current - Date.now()) / 1000));
       setTimeLeft(secsLeft);
@@ -273,10 +324,32 @@ export default function InterviewPage() {
       //   lastNudgeRef.current = Date.now();
       //   assistantPush(makeNudge(stage));
       // }
+
+      const now = Date.now();
+      const userIdle = now - lastActivityRef.current;
+      const aiIdle = now - lastAgentActivityRef.current;
+
+      if (
+        userIdle >= 120_000 &&          // user silent ≥ 2 min
+        aiIdle >= 120_000 &&          // AI also hasn’t spoken ≥ 2 min
+        !silenceTriggeredRef.current && // only once until activity resumes
+        !endedRef.current
+      ) {
+        silenceTriggeredRef.current = true; // gate immediately
+        void sendSilenceSystemEvent();
+      }
+
+      if (secsLeft <= 0 && !endedRef.current) {
+        // Optionally show a last system line in UI (no TTS to avoid overlap)
+        setAiReply("Time’s up. Ending the interview and saving your session…");
+        // end immediately; mark as auto so you can branch if needed
+        handleEndInterview({ auto: true });
+        return; // bail out this tick
+      }
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [stage]);
+  }, [stage, micOn]);
 
   // const makeNudge = (st: Stage): string => {
   //   switch (st) {
@@ -316,7 +389,7 @@ export default function InterviewPage() {
     setEndLoading(true);
     setCameraOn(false);
 
-    endAtRef.current = null;
+    endAtRef.current = undefined;
 
     window.speechSynthesis.cancel();
     SpeechRecognition.stopListening();
@@ -372,6 +445,8 @@ export default function InterviewPage() {
     const assistantMsg = { role: "assistant" as const, content: data.reply };
     setHistory([...newHistory, assistantMsg]);
     setAiReply(data.reply);
+    lastAgentActivityRef.current = Date.now();
+    silenceTriggeredRef.current = false;
     setLoading(false);
     setActiveView("question");
 

@@ -420,7 +420,8 @@ export default function InterviewPage() {
     } finally {
       setEndLoading(false);
       // ⬇️ Redirect to HOME (change "/" if your home route differs)
-      router.replace("/");
+      const sessionId = searchParams.get("sessionId") ?? "";
+      router.replace(`/interview/feedback?sessionId=${encodeURIComponent(sessionId)}`);
     }
   };
 

@@ -17,6 +17,8 @@ const InterviewSessionSchema = new mongoose.Schema(
     endTime: Date,
     summary: String,
     feedback: String,
+    customerRating: { type: Number, min: 1, max: 5 },
+    customerFeedback: String
   },
   { timestamps: true }
 );

@@ -11,9 +11,10 @@ export async function POST(req: NextRequest) {
 
     await connectToDB();
     const body = await req.json();
+    console.log('body update-interview -->> ', body)
     const { sessionId, feedback } = body;
 
-    if (!sessionId || !feedback) {
+    if (!sessionId) {
       return NextResponse.json(
         { error: "Missing sessionId or feedback" },
         { status: 400 }

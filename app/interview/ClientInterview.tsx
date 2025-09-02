@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getPromptsForInterview, SUMMARY_PROMPT } from "@/lib/prompts";
+import { decrypt, encrypt } from "@/lib/crypto";
 
 const speak = (text: string, onEnd?: () => void) => {
   const normalizedText = text.replace(/\bO\(([^)]+)\)/g, "Big O of $1");
@@ -22,13 +23,13 @@ const speak = (text: string, onEnd?: () => void) => {
 };
 
 type Stage = "intro" | "clarify" | "coding" | "review" | "wrapup";
-const NUDGE_THRESHOLDS_MS: Record<Stage, number> = { intro: 15000, clarify: 20000, coding: 60000, review: 20000, wrapup: 15000 };
-const NUDGE_COOLDOWN_MS = 30000;
 const TIME_WARNINGS_S = [300, 120, 60];
 
-const END_TOKEN_REGEX = /\[?\bEND\s*INTERVIEW\b\]?/i;
-const containsEndToken = (text: string) => END_TOKEN_REGEX.test(text)
+const END_TOKEN_REGEX = /(?:\[|<)?\s*END[\s_\-]*INTERVIEW\s*(?:\]|>|\/>)?/i;
+const containsEndToken = (text: string) => !!text && END_TOKEN_REGEX.test(text);
 type ChatRole = "user" | "assistant" | "system";
+
+const ENC_KEY = process.env.NEXT_PUBLIC_ENC_KEY!
 
 export default function InterviewPage() {
   const [aiReply, setAiReply] = useState("");
@@ -79,6 +80,14 @@ export default function InterviewPage() {
     lastActivityRef.current = Date.now();
     silenceTriggeredRef.current = false;
   };
+
+  // const endIfToken = async (reply: string) => {
+  //   if (containsEndToken(reply) && !endedRef.current) {
+  //     await handleEndInterview({ auto: true });
+  //     return true;
+  //   }
+  //   return false;
+  // };
 
   // NEW: fetch plan and clamp duration BEFORE starting
   useEffect(() => {
@@ -180,12 +189,15 @@ export default function InterviewPage() {
     const startInterview = async () => {
       setLoading(true);
       const prompt = getPromptsForInterview(technology, allowedMinutes, company, level); // CHANGED
+      const encPayload = await encrypt({ messages: [], systemPrompt: prompt }, ENC_KEY)
+      // console.log('encPayload :: ', encPayload)
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [], systemPrompt: prompt }),
+        body: JSON.stringify(encPayload),
       });
-      const data = await res.json();
+      const encOut = await res.json();
+      const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
 
       const assistantMsg = { role: "assistant" as const, content: data.reply };
       setHistory([assistantMsg]);
@@ -217,12 +229,15 @@ export default function InterviewPage() {
     setHistory(newHistory);
 
     const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level); // CHANGED (safety)
+    const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
+    console.log('encPayload :: ', encPayload)
     const res = await fetch("/api/interview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: newHistory, systemPrompt: prompt }),
+      body: JSON.stringify(encPayload),
     });
-    const data = await res.json();
+    const encOut = await res.json();
+    const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
 
     const assistantMsg = { role: "assistant" as const, content: data.reply };
     setHistory([...newHistory, assistantMsg]);
@@ -256,12 +271,15 @@ export default function InterviewPage() {
 
       setLoading(true);
       const prompt = getPromptsForInterview(technology, allowedMinutes, company, level);
+      const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
+      console.log('encPayload :: ', encPayload)
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newHistory, systemPrompt: prompt }),
+        body: JSON.stringify(encPayload),
       });
-      const data = await res.json();
+      const encOut = await res.json();
+      const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
 
       const assistantMsg = { role: "assistant" as const, content: data.reply };
       setHistory([...newHistory, assistantMsg]);
@@ -395,10 +413,12 @@ export default function InterviewPage() {
     try {
       if (sessionId) {
         // Generate feedback
+        const encPayload = await encrypt({ messages: history, systemPrompt: SUMMARY_PROMPT }, ENC_KEY)
+        console.log('encPayload :: ', encPayload)
         const resSummary = await fetch("/api/interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ systemPrompt: SUMMARY_PROMPT, messages: history }),
+          body: JSON.stringify(encPayload),
         });
 
         let feedback = "";
@@ -436,12 +456,14 @@ export default function InterviewPage() {
     const newHistory = [...history, userMsg];
 
     const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level); // CHANGED
+    const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
     const res = await fetch("/api/interview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: newHistory, systemPrompt: prompt }),
+      body: JSON.stringify(encPayload),
     });
-    const data = await res.json();
+    const encOut = await res.json();
+    const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
 
     const assistantMsg = { role: "assistant" as const, content: data.reply };
     setHistory([...newHistory, assistantMsg]);

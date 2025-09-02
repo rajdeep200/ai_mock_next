@@ -1,6 +1,7 @@
 // app/api/interview/route.ts
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
+import { encrypt, decrypt } from '@/lib/crypto';
 
 // db:
 // username: grajdeep2000
@@ -9,17 +10,16 @@ import { NextRequest, NextResponse } from 'next/server';
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY!,
 });
+const ENC_KEY = process.env.NEXT_PUBLIC_ENC_KEY!
 
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { messages, systemPrompt } = body;
+        const { messages, systemPrompt } = await decrypt(body, ENC_KEY);
 
         if (!Array.isArray(messages)) {
             return NextResponse.json({ error: 'Invalid messages format' }, { status: 400 });
         }
-
-        console.log("messages ::", messages)
 
         const completion = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
@@ -30,7 +30,10 @@ export async function POST(req: NextRequest) {
             temperature: 0.7,
         });
 
-        return NextResponse.json({ reply: completion.choices[0].message.content });
+        const response = completion.choices[0].message.content
+        const encOut = await encrypt({ reply: response }, ENC_KEY);
+
+        return NextResponse.json(encOut);
     } catch (error) {
         console.error('[Interview API] Error:', error);
         return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });

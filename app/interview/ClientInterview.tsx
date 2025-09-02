@@ -414,7 +414,6 @@ export default function InterviewPage() {
       if (sessionId) {
         // Generate feedback
         const encPayload = await encrypt({ messages: history, systemPrompt: SUMMARY_PROMPT }, ENC_KEY)
-        console.log('encPayload :: ', encPayload)
         const resSummary = await fetch("/api/interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -423,7 +422,8 @@ export default function InterviewPage() {
 
         let feedback = "";
         if (resSummary.ok) {
-          const { reply } = await resSummary.json();
+          const response = await resSummary.json();
+          const { reply } = await decrypt(response, ENC_KEY);
           feedback = reply ?? "";
         }
 

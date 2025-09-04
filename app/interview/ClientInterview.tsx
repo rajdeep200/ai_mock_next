@@ -491,112 +491,259 @@ export default function InterviewPage() {
   return (
     <>
       <SignedIn>
-        <main className="min-h-screen bg-black text-white flex flex-col p-4 gap-4">
-          <header className="flex justify-between items-center w-full">
-            <h1 className="text-lg sm:text-xl font-semibold text-green-400">Mock Interview</h1>
-            <div className="flex items-center gap-4">
-              <span className="text-xs px-2 py-1 rounded bg-gray-800 border border-gray-700">
-                ⏱ {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
-              </span>
-              <button
-                onClick={() => void handleEndInterview()}
-                disabled={endLoading || ended}
-                className={`flex items-center gap-2 text-sm font-medium transition-colors
-                  ${endLoading || ended ? "text-gray-400 cursor-not-allowed" : "text-red-500 hover:text-red-400 cursor-pointer"}`}
-              >
-                {endLoading ? <FiLoader className="animate-spin" size={18} /> : <FiX size={18} />}
-                {endLoading ? " Ending…" : ended ? "Ended" : " End Interview"}
-              </button>
+        <main className="relative min-h-screen bg-black text-white flex flex-col overflow-hidden">
+          {/* ---- Ambient FX (particles + scanlines + grid) ---- */}
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            {/* particles */}
+            <div className="absolute inset-0">
+              <div className="animate-float-slow absolute top-[-40px] left-[10%] h-72 w-72 rounded-full bg-emerald-500/10 blur-2xl" />
+              <div className="animate-float-medium absolute bottom-[-60px] right-[5%] h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl" />
+              <div className="animate-float-fast absolute top-[30%] right-[30%] h-40 w-40 rounded-full bg-green-300/10 blur-2xl" />
+            </div>
+            {/* scanlines */}
+            <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[length:100%_3px]" />
+            {/* grid */}
+            <div className="absolute inset-0 opacity-40 [mask-image:radial-gradient(50%_70%_at_50%_60%,black,transparent)]">
+              <div className="h-full w-full bg-[linear-gradient(to_right,rgba(31,41,55,.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(31,41,55,.5)_1px,transparent_1px)] bg-[size:48px_48px]" />
+            </div>
+          </div>
+
+          {/* ---- Header ---- */}
+          <header className="relative z-10 w-full px-4 sm:px-6 py-3 border-b border-gray-800/70 backdrop-blur bg-black/40">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {/* Title */}
+              <div className="relative">
+                <h1 className="text-base sm:text-lg font-semibold tracking-wide">
+                  <span className="bg-gradient-to-r from-emerald-300 via-green-400 to-emerald-200 bg-clip-text text-transparent">
+                    Mock Interview
+                  </span>
+                </h1>
+                <span className="absolute -bottom-1 left-0 h-[2px] w-20 bg-gradient-to-r from-emerald-500 to-transparent" />
+              </div>
+
+              {/* Controls: timer + end */}
+              <div className="flex items-center gap-2 sm:gap-3 justify-between sm:justify-end">
+                {/* Timer pill */}
+                <span
+                  className="whitespace-nowrap inline-flex items-center gap-2 text-[11px] sm:text-xs px-2.5 py-1 rounded-full
+                   border border-emerald-500/40 bg-gray-900/70 ring-1 ring-emerald-500/20
+                   shadow-[0_0_12px_rgba(16,185,129,.22)]"
+                  title="Remaining time"
+                >
+                  <span className="hidden sm:block text-gray-300">Time</span>
+                  <span className="block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  {`⏱ ${Math.floor(timeLeft / 60)}:${String(timeLeft % 60).padStart(2, "0")}`}
+                </span>
+
+                {/* End button */}
+                <button
+                  onClick={() => void handleEndInterview()}
+                  disabled={endLoading || ended}
+                  className={`cursor-pointer whitespace-nowrap inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] sm:text-sm font-medium
+                    transition shadow-[0_0_14px_rgba(239,68,68,.18)]
+                    ${endLoading || ended
+                      ? "cursor-not-allowed border border-gray-700/70 bg-gray-900/60 text-gray-400"
+                      : "border border-red-500/30 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white"
+                    }`}
+                  aria-label="End Interview"
+                >
+                  {endLoading ? (
+                    <FiLoader className="animate-spin" size={16} />
+                  ) : (
+                    <FiX size={16} />
+                  )}
+                  {/* Keep label hidden on very small screens to avoid wrapping */}
+                  <span className="hidden xs:inline">
+                    {endLoading ? "Ending…" : ended ? "Ended" : "End Interview"}
+                  </span>
+                </button>
+              </div>
             </div>
           </header>
 
-          {/* NEW: block UI until plan check done */}
-          {allowedMinutes === undefined ? (
-            <div className="w-full max-w-3xl mx-auto bg-gray-900 border border-gray-800 rounded-md p-4 text-gray-300 flex items-center gap-2">
-              <FiLoader className="animate-spin" /> Preparing your interview…
-            </div>
-          ) : wasClamped ? (
-            <div className="w-full max-w-3xl mx-auto bg-yellow-900/40 border border-yellow-700 text-yellow-200 text-sm rounded-md px-3 py-2">
-              Requested duration was {requestedDuration} min, but your plan allows max {planMax} min. Adjusted to <b>{allowedMinutes} min</b>.{" "}
-              <Link href="/pricing" className="underline text-yellow-300 hover:text-yellow-200">Upgrade your plan</Link> for longer sessions.
-            </div>
-          ) : null}
+          {/* ---- Notices ---- */}
+          <div className="relative z-10 px-4 sm:px-6 pt-3">
+            {allowedMinutes === undefined ? (
+              <div className="w-full max-w-3xl mx-auto bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-gray-300 flex items-center gap-2 backdrop-blur">
+                <FiLoader className="animate-spin" /> Preparing your interview…
+              </div>
+            ) : wasClamped ? (
+              <div className="w-full max-w-3xl mx-auto bg-yellow-900/35 border border-yellow-700/70 text-yellow-200 text-sm rounded-xl px-3 py-2 backdrop-blur">
+                Requested duration was {requestedDuration}m, but your plan allows max {planMax}m.
+                Adjusted to <b>{allowedMinutes}m</b>.{" "}
+                <Link href="/pricing" className="underline text-yellow-300 hover:text-yellow-50">
+                  Upgrade your plan
+                </Link>{" "}
+                for longer sessions.
+              </div>
+            ) : null}
+          </div>
 
-          {/* Video Feed and Controls */}
-          <section className="flex flex-col items-center justify-center gap-3">
-            <div className="w-full max-w-xl aspect-video bg-black rounded-lg overflow-hidden border border-gray-700 shadow-lg relative">
-              {cameraOn ? (
-                <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gray-900 flex items-center justify-center text-gray-500 flex-col gap-2">
-                  <FiVideoOff size={40} />
-                  <span>Camera Off</span>
+          {/* ---- Main ---- */}
+          <section className="relative z-10 flex-1 px-4 sm:px-6 py-5">
+            <div className="mx-auto grid w-full max-w-6xl gap-6 lg:gap-7 lg:grid-cols-2">
+              {/* LEFT: Camera + Controls + Transcript */}
+              <div className="flex flex-col gap-4">
+                {/* Holographic panel */}
+                <div className="relative rounded-2xl overflow-hidden">
+                  <div className="hologram-border pointer-events-none absolute -inset-[1px] rounded-2xl" />
+                  <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-emerald-500/25 bg-gray-950/70 backdrop-blur shadow-[0_0_30px_rgba(16,185,129,.18)] ring-1 ring-emerald-500/10">
+                    {cameraOn ? (
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gray-900/70 flex items-center justify-center text-gray-400 flex-col gap-2">
+                        <FiVideoOff size={42} />
+                        <span>Camera Off</span>
+                      </div>
+                    )}
+                    {/* subtle scan overlay */}
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(16,185,129,.08)_50%,transparent_100%)] animate-scan" />
+                  </div>
                 </div>
-              )}
-            </div>
-            <div className="flex gap-4">
-              <button onClick={toggleMic} disabled={ended} className={`p-3 rounded-full ${micOn ? "bg-red-600" : "bg-green-600"} hover:opacity-90 transition disabled:opacity-50`}>
-                {micOn ? <FiMicOff size={20} /> : <FiMic size={20} />}
-              </button>
-              <button
-                onClick={() => { if (!ended) { setCameraOn(!cameraOn); markActivity(); } }}
-                disabled={ended}
-                className={`p-3 rounded-full ${cameraOn ? "bg-red-600" : "bg-green-600"} hover:opacity-90 transition disabled:opacity-50`}
-              >
-                {cameraOn ? <FiVideoOff size={20} /> : <FiVideo size={20} />}
-              </button>
-            </div>
-            <div className="w-full max-w-xl bg-gray-900/50 border border-gray-800 p-2.5 rounded-lg text-xs text-green-300 font-mono mt-1">
-              🎙️ {transcript || "..."}
-            </div>
-          </section>
 
-          {/* Main Area */}
-          <section className="flex-1 flex flex-col bg-gray-900/60 backdrop-blur-sm rounded-xl border border-gray-800 overflow-hidden">
-            <div className="flex border-b border-gray-700">
-              <button
-                onClick={() => { setActiveView("question"); markActivity(); }}
-                className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all ${activeView === "question" ? "bg-green-900/50 text-green-300 border-b-2 border-green-400" : "text-gray-400 hover:bg-gray-800"
-                  }`}
-              >
-                <FiMessageSquare /> Question
-              </button>
-              <button
-                onClick={() => { setActiveView("editor"); if (stage === "clarify") setStage("coding"); markActivity(); }}
-                className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all ${activeView === "editor" ? "bg-green-900/50 text-green-300 border-b-2 border-green-400" : "text-gray-400 hover:bg-gray-800"
-                  }`}
-              >
-                <FiCode /> Code Editor
-              </button>
-            </div>
+                {/* Controls */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={toggleMic}
+                    disabled={ended}
+                    className={`h-12 w-12 rounded-xl grid place-items-center transition
+                              border border-white/10 shadow-[0_0_20px_rgba(255,255,255,.06)]
+                              ${micOn
+                        ? "bg-red-600/90 hover:bg-red-600 ring-2 ring-red-400/30"
+                        : "bg-emerald-600/90 hover:bg-emerald-600 ring-2 ring-emerald-400/30"
+                      } disabled:opacity-50`}
+                    title={micOn ? "Mute mic" : "Unmute mic"}
+                  >
+                    {micOn ? <FiMicOff size={20} /> : <FiMic size={20} />}
+                  </button>
 
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
-              {activeView === "question" && (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  {loading ? (
-                    <div className="flex flex-col items-center gap-3 text-gray-400">
-                      <FiLoader className="animate-spin" size={24} />
-                      <span>AI is thinking...</span>
-                    </div>
-                  ) : (
-                    <p className="text-lg sm:text-xl text-green-200 leading-relaxed max-w-3xl">{aiReply}</p>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (!ended) {
+                        setCameraOn(!cameraOn);
+                        markActivity();
+                      }
+                    }}
+                    disabled={ended}
+                    className={`h-12 w-12 rounded-xl grid place-items-center transition
+                              border border-white/10 shadow-[0_0_20px_rgba(255,255,255,.06)]
+                              ${cameraOn
+                        ? "bg-red-600/90 hover:bg-red-600 ring-2 ring-red-400/30"
+                        : "bg-emerald-600/90 hover:bg-emerald-600 ring-2 ring-emerald-400/30"
+                      } disabled:opacity-50`}
+                    title={cameraOn ? "Turn camera off" : "Turn camera on"}
+                  >
+                    {cameraOn ? <FiVideoOff size={20} /> : <FiVideo size={20} />}
+                  </button>
+
+                  <div className="ml-auto inline-flex items-center gap-2 text-[11px] sm:text-xs px-2.5 py-1 rounded-full border border-gray-700 bg-gray-900/60 text-emerald-300">
+                    <span className="block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Live
+                  </div>
                 </div>
-              )}
-              {activeView === "editor" && (
-                <div className="flex flex-col h-full">
-                  <textarea
-                    placeholder="// Your code goes here..."
-                    className="flex-1 w-full bg-black/50 border border-gray-700 rounded-md p-4 font-mono text-sm text-gray-200 focus:ring-2 focus:ring-green-500 focus:outline-none resize-none transition"
-                    style={{ minHeight: "250px" }}
-                    value={userCode}
-                    onChange={(e) => { setUserCode(e.target.value); markActivity(); }}
-                  />
-                  <button onClick={handleCodeSubmit} disabled={ended} className="mt-4 self-end bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-colors disabled:opacity-50">
-                    Submit Code
+
+                {/* Transcript */}
+                <div className="w-full bg-gray-900/60 border border-gray-800 p-3 rounded-xl text-[12px] text-emerald-300 font-mono mt-1 backdrop-blur">
+                  <span className="opacity-70 mr-1">🎙️</span> {transcript || "…"}
+                </div>
+              </div>
+
+              {/* RIGHT: Q/A + Editor */}
+              <div className="flex flex-col rounded-2xl border border-emerald-500/25 bg-gray-950/70 backdrop-blur shadow-[0_0_28px_rgba(16,185,129,.15)] ring-1 ring-emerald-500/10 overflow-hidden">
+                {/* Tabs w/ neon indicator */}
+                <div className="relative flex border-b border-gray-800">
+                  <button
+                    onClick={() => {
+                      setActiveView("question");
+                      markActivity();
+                    }}
+                    className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
+                              ${activeView === "question"
+                        ? "text-emerald-300"
+                        : "text-gray-400 hover:text-gray-100"}`}
+                  >
+                    <span
+                      className={`absolute inset-x-0 bottom-0 h-[3px] transition-all ${activeView === "question" ? "bg-gradient-to-r from-emerald-400 via-green-400 to-emerald-400" : "bg-transparent"
+                        }`}
+                    />
+                    <FiMessageSquare /> Question
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveView("editor");
+                      if (stage === "clarify") setStage("coding");
+                      markActivity();
+                    }}
+                    className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
+                              ${activeView === "editor"
+                        ? "text-emerald-300"
+                        : "text-gray-400 hover:text-gray-100"}`}
+                  >
+                    <span
+                      className={`absolute inset-x-0 bottom-0 h-[3px] transition-all ${activeView === "editor" ? "bg-gradient-to-r from-emerald-400 via-green-400 to-emerald-400" : "bg-transparent"
+                        }`}
+                    />
+                    <FiCode /> Code Editor
                   </button>
                 </div>
-              )}
+
+                {/* Panel */}
+                <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
+                  {activeView === "question" && (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                      {loading ? (
+                        <div className="flex flex-col items-center gap-3 text-gray-400">
+                          <div className="relative">
+                            <FiLoader className="animate-spin text-emerald-400" size={28} />
+                            <span className="absolute inset-0 blur-sm opacity-40 text-emerald-400">
+                              <FiLoader className="animate-spin" size={28} />
+                            </span>
+                          </div>
+                          <span>AI is thinking…</span>
+                        </div>
+                      ) : (
+                        <p className="text-lg sm:text-xl text-emerald-200/90 leading-relaxed max-w-3xl">
+                          {aiReply}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {activeView === "editor" && (
+                    <div className="flex flex-col h-full">
+                      <div className="relative rounded-xl overflow-hidden">
+                        <div className=" pointer-events-none absolute -inset-[1px] rounded-xl" />
+                        <textarea
+                          placeholder="// Your code goes here…"
+                          className="flex-1 w-full bg-black/40 border border-gray-800 rounded-xl p-4 font-mono text-sm text-gray-200
+                                   focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none transition min-h-[260px]"
+                          value={userCode}
+                          onChange={(e) => {
+                            setUserCode(e.target.value);
+                            markActivity();
+                          }}
+                        />
+                      </div>
+                      <button
+                        onClick={handleCodeSubmit}
+                        disabled={ended}
+                        className="mt-4 self-end inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
+                                 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-500
+                                 hover:from-emerald-500 hover:via-green-500 hover:to-emerald-400
+                                 font-semibold text-white transition disabled:opacity-50"
+                      >
+                        Submit Code
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
         </main>
@@ -610,4 +757,6 @@ export default function InterviewPage() {
       </SignedOut>
     </>
   );
+
+
 }

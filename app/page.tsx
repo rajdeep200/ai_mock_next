@@ -20,37 +20,37 @@ export default function LandingPage() {
       </div>
 
       {/* === Hero === */}
-      <section className="relative z-10 flex flex-col items-center justify-center px-6 pt-15 pb-10 text-center sm:pt-32">
+      <section className="relative z-10 flex flex-col items-center justify-center px-6 pt-15 pb-10 text-center sm:pt-22">
         <div className="mx-auto max-w-5xl">
           <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-300 backdrop-blur">
             <span className="h-1.5 w-1.5 animate-ping-slow rounded-full bg-green-400" />
-            Next-gen interview prep
+            Built for high-stakes technical interviews
           </span>
 
           <h1 className="mt-6 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-5xl font-extrabold leading-[1.1] text-transparent sm:text-6xl md:text-7xl">
-            AI-Powered Mock Interviews
+            Mock Interviews That
             <br />
             <span className="text-green-400 drop-shadow-[0_0_30px_rgba(34,197,94,.35)]">
-              Personalized for You
+              Feel Like the Real Thing
             </span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Practice with an intelligent AI interviewer that adapts to your role, experience, and target company.
-            Sharpen your communication and problem-solving with real-time voice + chat.
+            Practice DSA and company-style rounds with an adaptive AI interviewer. Speak naturally,
+            get instant follow-ups, and receive actionable feedback that compounds across sessions.
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Link href="/home" className="group">
               <button className="cursor-pointer relative inline-flex items-center gap-2 rounded-full bg-green-600 px-7 py-3 text-lg font-semibold text-white transition-all hover:bg-green-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400">
                 <span className="absolute inset-0 -z-10 rounded-full bg-green-500/30 blur-lg transition-opacity group-hover:opacity-100" />
-                Get Started Free
+                Start Free Mock
                 <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />
               </button>
             </Link>
             <Link href="/pricing">
               <button className="cursor-pointer inline-flex items-center gap-2 rounded-full border border-gray-700/80 bg-gray-900/60 px-7 py-3 text-lg text-gray-200 backdrop-blur transition-all hover:border-green-700/70 hover:bg-gray-900">
-                View Pricing
+                See Plans
               </button>
             </Link>
           </div>
@@ -59,9 +59,9 @@ export default function LandingPage() {
         {/* Floating stat cards */}
         <div className="mt-14 grid w-full max-w-5xl grid-cols-2 gap-4 sm:grid-cols-3">
           {[
-            { k: 'Avg. Improvement', v: '72%', icon: <FiTrendingUp /> },
-            { k: 'Voice Latency', v: '~200ms', icon: <FiMic /> },
-            { k: 'Sessions Run', v: '25k+', icon: <FiClock /> },
+            { k: 'Improvement after 5 sessions', v: '↑ 70%*', icon: <FiTrendingUp /> },
+            { k: 'Avg. voice response time', v: '~200 ms', icon: <FiMic /> },
+            { k: 'Practice sessions completed', v: '25,000+', icon: <FiClock /> },
           ].map((s, i) => (
             <div
               key={i}
@@ -76,6 +76,10 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
+
+        <p className="mt-3 text-xs text-gray-500">
+          *Self-reported across beta users; varies by baseline and frequency.
+        </p>
       </section>
 
       {/* === Features (glass cards) === */}
@@ -83,43 +87,44 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl">
           <div className="mx-auto mb-10 max-w-3xl text-center">
             <h2 className="text-3xl font-bold sm:text-4xl">
-              Built for <span className="text-green-400">serious prep</span>
+              Everything you need to <span className="text-green-400">perform under pressure</span>
             </h2>
             <p className="mt-3 text-gray-300">
-              A clean, focused workspace with futuristic UI that stays out of your way while you get better.
+              MockQube compresses weeks of prep into focused, measurable reps—without scheduling or
+              coordination overhead.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[
               {
-                title: 'Realistic Simulation',
-                desc: 'Behavioral + technical prompts that mirror top-tier interviews.',
+                title: 'Interviewer-style prompts',
+                desc: 'Ambiguous problem statements with clarifying follow-ups—just like on site.',
                 icon: <FiMessageSquare />,
               },
               {
-                title: 'Adaptive AI',
-                desc: 'Questions scale with your level, stack, and target company.',
+                title: 'Adaptive difficulty',
+                desc: 'Questions scale by role, seniority, and target companies you choose.',
                 icon: <FiCpu />,
               },
               {
-                title: 'Instant Voice',
-                desc: 'Speak naturally and get low-latency voice responses.',
+                title: 'Low-latency voice',
+                desc: 'Speak your approach and get immediate voice feedback or hints.',
                 icon: <FiMic />,
               },
               {
-                title: 'Actionable Feedback',
-                desc: 'Tight, immediate critique after each response.',
+                title: 'Actionable scoring',
+                desc: 'Signal, reasoning, edge cases, and communication—scored every session.',
                 icon: <FiTrendingUp />,
               },
               {
-                title: 'Progress History',
-                desc: 'Every session logged so you can track growth.',
+                title: 'Progress you can track',
+                desc: 'Session history, trends, and summaries to target your weak areas.',
                 icon: <FiClock />,
               },
               {
-                title: 'Private by Design',
-                desc: 'Traffic is encrypted; your practice stays yours.',
+                title: 'Privacy first',
+                desc: 'End-to-end encrypted transport; your practice stays yours.',
                 icon: <FiShield />,
               },
             ].map((f, i) => (
@@ -141,55 +146,56 @@ export default function LandingPage() {
       </section>
 
       {/* === Testimonials (glass rail) === */}
+      {/* === Testimonials / Social Proof (pre-launch safe) === */}
       <section className="relative z-10 px-6 py-20">
         <div className="mx-auto max-w-5xl">
           <h2 className="mb-10 text-center text-3xl font-bold sm:text-4xl">
-            Loved by <span className="text-green-400">candidates</span>
+            Trusted by <span className="text-green-400">early adopters</span>
           </h2>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            {[
-              {
-                name: 'Rahul S.',
-                review:
-                  'MockQube felt like a real interview loop. I built confidence and cracked my Meta interview.',
-              },
-              {
-                name: 'Ananya P.',
-                review:
-                  'Feedback is precise and the questions actually matched my target teams.',
-              },
-              {
-                name: 'Mohit R.',
-                review:
-                  'Did not expect an AI to push me this well. The voice flow is crazy good.',
-              },
-              {
-                name: 'Sneha K.',
-                review:
-                  'Perfect for late-night reps. Tight prompts, fast coaching, great UI.',
-              },
-            ].map((t, i) => (
-              <figure
-                key={i}
-                className="rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-6 text-left backdrop-blur"
-              >
-                <blockquote className="italic text-gray-300">“{t.review}”</blockquote>
-                <figcaption className="mt-4 font-semibold text-green-400">— {t.name}</figcaption>
-              </figure>
-            ))}
+            {/* Pre-launch safe placeholders */}
+            <figure className="rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-6 text-left backdrop-blur">
+              <blockquote className="italic text-gray-300">
+                “Feedback from our private beta users is coming soon. Stay tuned!”
+              </blockquote>
+              <figcaption className="mt-4 font-semibold text-green-400">
+                — Early Access Program
+              </figcaption>
+            </figure>
+
+            <figure className="rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-6 text-left backdrop-blur">
+              <blockquote className="italic text-gray-300">
+                “Over <b>500 developers</b> have already joined our waitlist to
+                practice smarter interviews with MockQube.”
+              </blockquote>
+              <figcaption className="mt-4 font-semibold text-green-400">
+                — MockQube Team
+              </figcaption>
+            </figure>
           </div>
+
+          <p className="mt-8 text-center text-gray-400 text-sm">
+            🚀 Want to be one of the first to leave a testimonial?
+            <Link
+              href="/home"
+              className="ml-1 underline text-green-400 hover:text-green-300"
+            >
+              Join the beta
+            </Link>
+          </p>
         </div>
       </section>
+
 
       {/* === CTA === */}
       <section className="relative z-10 px-6 pb-24">
         <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-green-700/40 bg-gradient-to-br from-green-700/30 via-green-700/10 to-black p-8 text-center shadow-[0_0_60px_rgba(34,197,94,.18)] sm:p-12">
           <h2 className="text-3xl font-bold sm:text-4xl">
-            Ready to <span className="text-green-400">ace</span> your next interview?
+            Turn practice into <span className="text-green-400">offers</span>
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-gray-100/90">
-            Join thousands of developers leveling up with MockQube. It’s fast, focused, and built for real outcomes.
+            Do focused reps that mirror top-tier interviews. Speak, get feedback, repeat—until it’s muscle memory.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
             <Link href="/home" className="group">

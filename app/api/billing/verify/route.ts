@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import SubscriptionOrder from "@/models/SubscriptionOrder";
 import { CASHFREE_BASE_URL, cashfreeHeaders } from "@/lib/cashfree";
+import { auth } from "@clerk/nextjs/server";
 
 type CfPayment = {
   payment_id: string;
@@ -23,6 +24,10 @@ function toCanonicalStatus(s: string) {
 }
 
 export async function GET(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const orderId = req.nextUrl.searchParams.get("orderId");
   if (!orderId) {
     return NextResponse.json({ error: "Missing orderId" }, { status: 400 });

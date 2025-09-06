@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
 import { Types } from "mongoose";
+import { z } from "zod";
 
 interface SessionDoc {
   _id: Types.ObjectId;
@@ -18,28 +19,45 @@ interface SessionDoc {
   feedback?: string;
 }
 
+// Helpers
+const isValidObjectId = (v: string) => Types.ObjectId.isValid(v);
+
+const paramsSchema = z.object({
+  id: z
+    .string()
+    .trim()
+    .min(1, "session id is required")
+    .refine(isValidObjectId, "invalid session id"),
+});
+
+// Note: params is a Promise now — await it.
 export async function GET(
-  req: NextRequest,
-  context: any
+  _req: NextRequest,
+  ctx: { params: Promise<{ id?: string }> }
 ) {
-  // 1. Authenticate
+  // 1) Auth
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { params } = context;
-  const id: string = params.id;
-  
-  if (!id) {
-    return NextResponse.json({ error: "Missing session id" }, { status: 400 });
+  // 2) Await params, then validate
+  const { id: rawId = "" } = await ctx.params;
+  const parsed = paramsSchema.safeParse({ id: rawId });
+  if (!parsed.success) {
+    const { fieldErrors, formErrors } = parsed.error.flatten();
+    return NextResponse.json(
+      { error: "Validation failed", details: { fieldErrors, formErrors } },
+      { status: 400 }
+    );
   }
+  const { id } = parsed.data;
 
   try {
-    // 2. Connect to MongoDB
+    // 3) DB connect
     await connectToDB();
 
-    // 3. Find the session for this user
+    // 4) Find session scoped to user
     const session = await InterviewSession.findOne({
       _id: id,
       userId,
@@ -49,7 +67,7 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    // 4. Serialize and return
+    // 5) Serialize
     return NextResponse.json(
       {
         session: {
@@ -61,7 +79,6 @@ export async function GET(
           status: session.status,
           createdAt: session.createdAt.toISOString(),
           updatedAt: session.updatedAt.toISOString(),
-          // these fields should be set when ending the interview
           summary: session.summary ?? null,
           feedback: session.feedback ?? null,
         },

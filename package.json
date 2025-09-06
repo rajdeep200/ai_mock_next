@@ -13,6 +13,7 @@
     "@cashfreepayments/cashfree-js": "^1.0.5",
     "@clerk/nextjs": "^6.23.0",
     "@supabase/supabase-js": "^2.50.2",
+    "@vercel/analytics": "^1.5.0",
     "axios": "^1.11.0",
     "mongoose": "^8.17.0",
     "next": "15.3.4",
@@ -20,7 +21,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",
-    "react-speech-recognition": "^4.0.1"
+    "react-speech-recognition": "^4.0.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

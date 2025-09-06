@@ -42,6 +42,8 @@ export default function Footer() {
                         <FooterLink href="/pricing">Pricing</FooterLink>
                         <FooterLink href="/about">About Us</FooterLink>
                         <FooterLink href="/contact">Contact</FooterLink>
+                        <FooterLink href="/terms">Terms & Services</FooterLink>
+                        <FooterLink href="/privacy">Privacy & Policy</FooterLink>
                     </nav>
                 </div>
 

@@ -2,28 +2,15 @@
 import React from "react";
 import { ImageResponse } from "next/og";
 
-export const runtime = "edge";
-export const dynamic = "force-dynamic"; // avoid dev caching weirdness
-export const contentType = "image/png";
-export const size = { width: 1200, height: 630 };
+export const runtime = "edge"; // allowed on API routes
+
+// Use module constants instead of exporting "size"
+const WIDTH = 1200;
+const HEIGHT = 630;
 
 function originFromReq(req: Request) {
   const u = new URL(req.url);
   return `${u.protocol}//${u.host}`;
-}
-
-// Tiny manual date formatter so we don't rely on ICU in Edge
-function formatYmd(dateIso: string | null): string | null {
-  if (!dateIso) return null;
-  try {
-    const d = new Date(dateIso);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const da = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${da}`;
-  } catch {
-    return null;
-  }
 }
 
 function badge(text: string) {
@@ -31,7 +18,7 @@ function badge(text: string) {
     "div",
     {
       style: {
-        display: "flex",
+        display: "flex", // Satori supports: flex | block | none | -webkit-box
         alignItems: "center",
         borderRadius: 999,
         padding: "6px 14px",
@@ -46,7 +33,6 @@ function badge(text: string) {
   );
 }
 
-// fetch with timeout to avoid hanging Edge responses in dev
 async function fetchWithTimeout(
   url: string,
   ms = 1500
@@ -68,8 +54,12 @@ async function fetchWithTimeout(
 
 export async function GET(
   req: Request,
-  ctx: { params: Promise<{ slug: string }> }
+  ctx: { params: Promise<{ slug: string }> } // Next 15: params is a Promise
 ) {
+  const { slug } = await ctx.params;
+  const origin = originFromReq(req);
+
+  // Fetch public JSON (optional)
   let data: {
     technology: string | null;
     level: string | null;
@@ -80,28 +70,17 @@ export async function GET(
     displayName?: string | null;
   } | null = null;
 
-  let slug = "unknown";
   try {
-    const p = await ctx.params;
-    slug = p.slug;
-    const origin = originFromReq(req);
-
-    // 1) Try to load public JSON quickly; fall back if slow or fails
-    const res = await fetch(
-      `${origin}/api/share-public/${slug}`
+    const res = await fetchWithTimeout(
+      `${origin}/api/share-public/${slug}`,
+      1500
     );
-    // console.log('share-public res -->> ', res)
     if (res && res.ok) {
       const json = await res.json();
       if (json?.ok) data = json.data;
     }
-  } catch {
-    // ignore; we'll render a generic card
-    // console.log("error -->> ", error)
-  }
+  } catch {}
 
-  // console.log("mock data -->> ", data)
-  // 2) Derive fields with safe fallbacks
   const tech = data?.technology?.toLocaleUpperCase() || "Mock Interview";
   const level = data?.level || "—";
   const duration = data?.duration != null ? `${data.duration}m` : "—";
@@ -110,7 +89,16 @@ export async function GET(
       ? `${data.modelPreparationPercent}%`
       : "—";
   const company = data?.company || null;
-  const dateStr = formatYmd(data?.updatedAt || null);
+
+  // simple date formatting (avoid ICU quirks)
+  const dateStr = (() => {
+    if (!data?.updatedAt) return null;
+    const d = new Date(data.updatedAt);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${da}`;
+  })();
 
   const displayName = data?.displayName || "MockQube Candidate";
   const initials =
@@ -122,7 +110,7 @@ export async function GET(
       .join("")
       .toUpperCase() || "MC";
 
-  // 3) Build the minimal, robust UI
+  // Backgrounds
   const bgGlow = React.createElement("div", {
     style: {
       position: "absolute",
@@ -138,11 +126,12 @@ export async function GET(
       inset: 0,
       opacity: 0.22,
       background:
-      "linear-gradient(to right, rgba(31,41,55,.45) 1px, transparent 1px), linear-gradient(to bottom, rgba(31,41,55,.45) 1px, transparent 1px)",
+        "linear-gradient(to right, rgba(31,41,55,.45) 1px, transparent 1px), linear-gradient(to bottom, rgba(31,41,55,.45) 1px, transparent 1px)",
       backgroundSize: "48px 48px",
     },
   });
 
+  // Top row
   const avatar = React.createElement(
     "div",
     {
@@ -230,6 +219,7 @@ export async function GET(
     ]
   );
 
+  // Card (multiple children => must declare display:flex for Satori)
   const card = React.createElement(
     "div",
     {
@@ -262,6 +252,7 @@ export async function GET(
     ]
   );
 
+  // Root must be a flex container (already is)
   const tree = React.createElement(
     "div",
     {
@@ -282,11 +273,7 @@ export async function GET(
     [bgGlow, grid, card]
   );
 
-  // 4) Always return an image (never hang/empty)
-  const image = new ImageResponse(tree, {
-    width: size.width,
-    height: size.height,
-  });
+  const image = new ImageResponse(tree, { width: WIDTH, height: HEIGHT });
 
   // Optional: force download
   const url = new URL(req.url);
@@ -296,5 +283,6 @@ export async function GET(
       `attachment; filename="mockqube-share-${slug}.png"`
     );
   }
+
   return image;
 }

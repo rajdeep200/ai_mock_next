@@ -427,11 +427,26 @@ export default function InterviewPage() {
           feedback = reply ?? "";
         }
 
+        let modelPrepPercent: number | undefined
+        const m = feedback.match(/Preparation Percentage:\s*(\d{1,3})%/i)
+        if (m) {
+          const n = Math.min(100, Math.max(0, parseInt(m[1], 10)));
+          if (!Number.isNaN(n)) modelPrepPercent = n;
+        } else {
+          const na = /Preparation Percentage:\s*N\/A/i.test(feedback);
+          if (na) {
+            modelPrepPercent = undefined; // store null/undefined in DB
+          } else {
+            // fallback: if header malformed, don't store a number
+            modelPrepPercent = undefined;
+          }
+        }
+
         // Persist interview completion + feedback
         await fetch("/api/update-interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, feedback }),
+          body: JSON.stringify({ sessionId, feedback, ...(typeof modelPrepPercent === 'number' ? {modelPreparationPercent: modelPrepPercent} : {}) }),
         });
       }
     } catch (e) {

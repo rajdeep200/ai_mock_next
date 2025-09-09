@@ -21,6 +21,12 @@ const updateInterviewSchema = z
       .trim()
       .min(1, "feedback cannot be empty")
       .max(5000, "feedback is too long"),
+    modelPreparationPercent: z.coerce
+      .number()
+      .int("modelPreparationPercent must be an integer")
+      .min(0, "modelPreparationPercent - Min value should be 0")
+      .max(100, "modelPreparationPercent - Max value should be 100")
+      .optional(),
   })
   .strict(); // disallow extra fields (e.g., userId)
 
@@ -57,20 +63,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { sessionId, feedback } = payload;
+    const { sessionId, feedback, modelPreparationPercent } = payload;
 
     // 4) DB connect
     await connectToDB();
+
+    const setFields: Record<string, unknown> = {
+      feedback,
+      endTime: new Date(),
+      status: "completed"
+    }
+
+    if(typeof modelPreparationPercent == "number"){
+      setFields.modelPreparationPercent = modelPreparationPercent
+    }
 
     // 5) Update (scoped to authenticated user)
     const updated = await InterviewSession.findOneAndUpdate(
       { _id: sessionId, userId },
       {
-        $set: {
-          feedback,
-          endTime: new Date(),
-          status: "completed",
-        },
+        $set: setFields,
       },
       { new: true }
     );

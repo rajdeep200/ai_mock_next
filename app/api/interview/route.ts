@@ -29,8 +29,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log('systemPrompt -->> ', systemPrompt)
-    console.log('messages -->> ', messages)
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [

@@ -443,10 +443,11 @@ export default function InterviewPage() {
         }
 
         // Persist interview completion + feedback
+        const encPayloadSummary = await encrypt({ sessionId, feedback, ...(typeof modelPrepPercent === 'number' ? {modelPreparationPercent: modelPrepPercent} : {}) },ENC_KEY)
         await fetch("/api/update-interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, feedback, ...(typeof modelPrepPercent === 'number' ? {modelPreparationPercent: modelPrepPercent} : {}) }),
+          body: JSON.stringify(encPayloadSummary),
         });
       }
     } catch (e) {

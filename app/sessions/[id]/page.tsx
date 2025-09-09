@@ -13,6 +13,7 @@ import {
   FiCheck,
   FiPlayCircle,
 } from "react-icons/fi";
+import { ShareInterview } from "@/component/ShareInterview";
 
 interface SessionDetail {
   id: string;
@@ -24,6 +25,8 @@ interface SessionDetail {
   createdAt: string;
   summary?: string;
   feedback?: string;
+  shareEnabled?: boolean;
+  shareUrl?: string | null;
 }
 
 export default function SessionDetailsPage() {
@@ -46,6 +49,7 @@ export default function SessionDetailsPage() {
         });
         if (res.ok) {
           const data = (await res.json()) as { session: SessionDetail };
+          console.log('session data -->> ', data)
           setSession(data.session);
         } else {
           console.error("Failed to load session");
@@ -196,6 +200,15 @@ export default function SessionDetailsPage() {
                     <p className="whitespace-pre-line text-gray-100 leading-relaxed">
                       {session.feedback}
                     </p>
+                  </div>
+                )}
+
+                {session.status === "completed" && (
+                  <div className="rounded-3xl border border-emerald-700/40 bg-gray-900/60 p-6 sm:p-7 backdrop-blur hover:border-emerald-600/60 transition">
+                    <h2 className="mb-3 text-xl font-semibold text-emerald-300">
+                      Share your success
+                    </h2>
+                    <ShareInterview sessionId={session.id} initialEnabled={!!session.shareEnabled} initialUrl={session.shareUrl ?? null} />
                   </div>
                 )}
 

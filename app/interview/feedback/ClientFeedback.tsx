@@ -4,6 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FiLoader, FiArrowLeft } from "react-icons/fi";
 import Link from "next/link";
+import { ShareInterview } from "@/component/ShareInterview";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -203,6 +204,12 @@ function FeedbackInner() {
                 <p className="mt-4 text-center text-xs text-gray-500">
                     Your feedback helps improve question quality, pacing, and hints.
                 </p>
+
+                {sessionId && (
+                    <div className="mt-6">
+                        <ShareInterview sessionId={sessionId} />
+                    </div>
+                )}
             </div>
         </main>
     );

@@ -17,15 +17,19 @@ const InterviewSessionSchema = new mongoose.Schema(
     endTime: Date,
     summary: String,
     feedback: String,
-    modelPreparationPercent : {
+    modelPreparationPercent: {
       type: Number,
       min: 0,
       max: 100,
       default: null,
-      set: (v: number | null) => typeof v === "number" ? Math.round(v) : v,
+      set: (v: number | null) => (typeof v === "number" ? Math.round(v) : v),
     },
     customerRating: { type: Number, min: 1, max: 5 },
-    customerFeedback: String
+    customerFeedback: String,
+
+    shareSlug: { type: String, index: true, unique: true, sparse: true },
+    shareEnabled: { type: Boolean, default: false },
+    sharedAt: { type: Date },
   },
   { timestamps: true }
 );

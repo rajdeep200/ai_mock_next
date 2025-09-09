@@ -5,7 +5,9 @@ import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
 import { Types } from "mongoose";
 import { z } from "zod";
+import { decrypt } from "@/lib/crypto";
 
+const ENC_KEY = process.env.NEXT_PUBLIC_ENC_KEY!;
 const isValidObjectId = (v: string) => Types.ObjectId.isValid(v);
 
 // --- Validation schema ---
@@ -50,7 +52,8 @@ export async function POST(req: NextRequest) {
     let payload: z.infer<typeof updateInterviewSchema>;
     try {
       const json = await req.json();
-      const parsed = updateInterviewSchema.safeParse(json);
+      const dcrBody = await decrypt(json, ENC_KEY);
+      const parsed = updateInterviewSchema.safeParse(dcrBody);
       if (!parsed.success) {
         const { fieldErrors, formErrors } = parsed.error.flatten();
         return NextResponse.json(

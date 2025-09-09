@@ -1,10 +1,15 @@
 // app/api/tts/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
+import { auth } from "@clerk/nextjs/server";
 
 const polly = new PollyClient({ region: process.env.AWS_REGION });
 
 export async function POST(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const { text, voiceId = "Matthew" } = await req.json();
   if (!text) {
     return NextResponse.json({ error: "No text provided" }, { status: 400 });

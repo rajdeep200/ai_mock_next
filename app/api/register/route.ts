@@ -17,7 +17,6 @@ export async function POST(req: NextRequest) {
     await connectToDB();
 
     const existingUser = await User.findOne({ clerkId });
-    console.log("existingUser :: ", existingUser)
 
     if (existingUser) {
       return NextResponse.json({

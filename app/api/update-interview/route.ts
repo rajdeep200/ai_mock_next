@@ -1,34 +1,100 @@
+// app/api/update-interview/route.ts (or your current path)
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
+import { Types } from "mongoose";
+import { z } from "zod";
+import { decrypt } from "@/lib/crypto";
+
+const ENC_KEY = process.env.NEXT_PUBLIC_ENC_KEY!;
+const isValidObjectId = (v: string) => Types.ObjectId.isValid(v);
+
+// --- Validation schema ---
+const updateInterviewSchema = z
+  .object({
+    sessionId: z
+      .string()
+      .trim()
+      .min(1, "sessionId is required")
+      .refine(isValidObjectId, "sessionId must be a valid Mongo ObjectId"),
+    feedback: z
+      .string({ required_error: "feedback is required" })
+      .trim()
+      .min(1, "feedback cannot be empty")
+      .max(5000, "feedback is too long"),
+    modelPreparationPercent: z.coerce
+      .number()
+      .int("modelPreparationPercent must be an integer")
+      .min(0, "modelPreparationPercent - Min value should be 0")
+      .max(100, "modelPreparationPercent - Max value should be 100")
+      .optional(),
+  })
+  .strict(); // disallow extra fields (e.g., userId)
 
 export async function POST(req: NextRequest) {
   try {
+    // 1) Auth
     const { userId } = await auth();
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    await connectToDB();
-    const body = await req.json();
-    const { sessionId, feedback } = body;
-
-    if (!sessionId || !feedback) {
+    // 2) Require JSON
+    const contentType = req.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("application/json")) {
       return NextResponse.json(
-        { error: "Missing sessionId or feedback" },
-        { status: 400 }
+        { error: "Unsupported Media Type. Use application/json." },
+        { status: 415 }
       );
     }
 
-    await InterviewSession.findOneAndUpdate(
+    // 3) Parse & validate
+    let payload: z.infer<typeof updateInterviewSchema>;
+    try {
+      const json = await req.json();
+      const dcrBody = await decrypt(json, ENC_KEY);
+      const parsed = updateInterviewSchema.safeParse(dcrBody);
+      if (!parsed.success) {
+        const { fieldErrors, formErrors } = parsed.error.flatten();
+        return NextResponse.json(
+          { error: "Validation failed", details: { fieldErrors, formErrors } },
+          { status: 400 }
+        );
+      }
+      payload = parsed.data;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const { sessionId, feedback, modelPreparationPercent } = payload;
+
+    // 4) DB connect
+    await connectToDB();
+
+    const setFields: Record<string, unknown> = {
+      feedback,
+      endTime: new Date(),
+      status: "completed"
+    }
+
+    if(typeof modelPreparationPercent == "number"){
+      setFields.modelPreparationPercent = modelPreparationPercent
+    }
+
+    // 5) Update (scoped to authenticated user)
+    const updated = await InterviewSession.findOneAndUpdate(
       { _id: sessionId, userId },
       {
-        feedback,
-        endTime: new Date(),
-        status: "completed",
-      }
+        $set: setFields,
+      },
+      { new: true }
     );
 
+    if (!updated) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    // 6) OK
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[UPDATE_INTERVIEW] Error:", error);

@@ -1,1 +1,174 @@
 @import "tailwindcss";
+
+/* Floating blobs */
+@keyframes float-slow {
+    0% {
+        transform: translateY(0) translateX(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(-10px) translateX(6px) scale(1.03);
+    }
+
+    100% {
+        transform: translateY(0) translateX(0) scale(1);
+    }
+}
+
+@keyframes float-medium {
+    0% {
+        transform: translateY(0) translateX(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(12px) translateX(-8px) scale(1.02);
+    }
+
+    100% {
+        transform: translateY(0) translateX(0) scale(1);
+    }
+}
+
+@keyframes float-fast {
+    0% {
+        transform: translateY(0) translateX(0) scale(1);
+    }
+
+    50% {
+        transform: translateY(-8px) translateX(10px) scale(1.04);
+    }
+
+    100% {
+        transform: translateY(0) translateX(0) scale(1);
+    }
+}
+
+.animate-float-slow {
+    animation: float-slow 14s ease-in-out infinite;
+}
+
+.animate-float-medium {
+    animation: float-medium 10s ease-in-out infinite;
+}
+
+.animate-float-fast {
+    animation: float-fast 7s ease-in-out infinite;
+}
+
+/* Scan overlay */
+@keyframes scan {
+    0% {
+        transform: translateY(-100%);
+    }
+
+    100% {
+        transform: translateY(100%);
+    }
+}
+
+.animate-scan {
+    animation: scan 3.2s linear infinite;
+}
+
+/* Neon borders */
+.hologram-border {
+    background: conic-gradient(from 180deg at 50% 50%, rgba(16, 185, 129, .5), rgba(16, 185, 129, .15), rgba(16, 185, 129, .5));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    padding: 1px;
+    border-radius: 1rem;
+    /* match rounded-2xl */
+}
+
+.editor-border {
+    background: conic-gradient(from 180deg at 50% 50%, rgba(16, 185, 129, .55), rgba(16, 185, 129, .08), rgba(16, 185, 129, .55));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    padding: 1px;
+    border-radius: 0.75rem;
+    /* match rounded-xl */
+}
+
+/* ==== Editor Look & Feel ==== */
+.editor-shell {
+  background: #0b0f0e;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(16,185,129,.15) inset,
+    0 10px 24px rgba(0,0,0,.45);
+  overflow: clip;
+  position: relative;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .65rem .9rem;
+  background:
+    radial-gradient(1200px 1200px at -20% -60%, rgba(16,185,129,.06) 0%, transparent 60%),
+    linear-gradient(to right, rgba(16,185,129,.10), rgba(16,185,129,.0));
+  border-bottom: 1px solid rgba(16,185,129,.2);
+}
+
+.editor-textarea {
+  width: 100%;
+  min-height: 260px;
+  color: #e6ffef;
+  caret-color: rgb(16,185,129);
+  background: #0b0f0e;
+  border: none;
+  outline: none;
+  padding: 1rem 1.1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: .92rem;
+  line-height: 1.5rem;
+  resize: vertical;
+}
+
+/* subtle grid like an IDE */
+.editor-grid {
+  background-image:
+    linear-gradient(rgba(16,185,129,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16,185,129,.06) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.5), rgba(0,0,0,1));
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+
+/* scrollbars */
+.editor-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+.editor-scroll::-webkit-scrollbar-thumb {
+  background: rgba(16,185,129,.3);
+  border-radius: 9999px;
+}
+.editor-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* neon borders re-used */
+.holo-1px {
+  background: conic-gradient(from 180deg at 50% 50%, rgba(16,185,129,.5), rgba(16,185,129,.12), rgba(16,185,129,.5));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  padding: 1px;
+  border-radius: 14px;
+}
+
+/* compact buttons for small screens */
+.btn-danger {
+  background: linear-gradient(to bottom right, rgba(239,68,68,.95), rgba(185,28,28,.95));
+  border: 1px solid rgba(239,68,68,.35);
+  color: white;
+}
+.btn-danger:disabled { opacity: .6; }
+
+/* timer pill */
+.timer-pill {
+  background: rgba(31,41,55,.85);
+  border: 1px solid rgba(75,85,99,.7);
+  border-radius: 9999px;
+  padding: .35rem .55rem;
+  font-variant-numeric: tabular-nums;
+}

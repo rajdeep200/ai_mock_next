@@ -1,58 +1,129 @@
 // app/api/webhooks/cashfree/route.ts
-import { NextResponse } from "next/server";                    // ← use NextResponse
+import { NextResponse } from "next/server";
 import { connectToDB } from "@/lib/mongodb";
 import SubscriptionOrder from "@/models/SubscriptionOrder";
 import { User } from "@/models/User";
 import { monthsFromNow } from "@/lib/cashfree";
 import crypto from "crypto";
 
-// ✅ App Router friendly flags (optional but useful for webhooks)
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// ✅ safer signature check + timingSafeEqual
+/** Verify HMAC-SHA256 signature (base64) with timingSafeEqual */
 function verifySignature(rawBody: string, signature: string | null) {
   const secret = process.env.CASHFREE_WEBHOOK_SECRET;
   if (!secret || !signature) return false;
-
   const expected = crypto
     .createHmac("sha256", secret)
     .update(rawBody, "utf8")
     .digest("base64");
-  
-  console.log('signature :: ', signature)
-  console.log('expected :: ', expected)
-
   try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+    return crypto.timingSafeEqual(
+      Buffer.from(signature, "utf8"),
+      Buffer.from(expected, "utf8")
+    );
   } catch {
     return false;
   }
 }
 
-export async function POST(req: Request) {                     // ← standard Request is fine
-  // Read raw body first (needed for signature)
-  console.log("INSIDE WEBHOOK")
-  const raw = await req.text();
-  const signature =
-    req.headers.get("x-webhook-signature") ||                  // Cashfree commonly uses this
-    req.headers.get("x-cf-signature") ||                       // fallback
+/** Map Cashfree event/status to a canonical bucket */
+function normalizeStatus(payload: any): {
+  orderId: string | null;
+  kind: "success" | "failed" | "pending" | "unknown";
+  details?: string;
+  cfOrderId?: string;
+  cfPaymentId?: string;
+  eventType?: string;
+} {
+  const eventType: string = (payload?.type || payload?.event || "")
+    .toString()
+    .toLowerCase();
+
+  const orderId =
+    payload?.data?.order?.order_id ??
+    payload?.order?.order_id ??
+    payload?.order_id ??
+    payload?.data?.order_id ??
     null;
 
-  // In dev, you can skip verification if no secret is set
-  const skipVerify =
-    process.env.NODE_ENV !== "production" &&
-    !process.env.CASHFREE_WEBHOOK_SECRET;
-  
-  console.log('skipVerify :: ', skipVerify)
+  const cfOrderId =
+    payload?.data?.order?.cf_order_id ??
+    payload?.order?.cf_order_id ??
+    payload?.cf_order_id ??
+    null;
 
-  const isSignVerified = verifySignature(raw, signature)
-  console.log('isSignVerified :: ', isSignVerified )
-  // if (!skipVerify && !isSignVerified) {
-  //   return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  // }
+  const paymentStatus =
+    payload?.data?.payment?.payment_status ??
+    payload?.payment?.payment_status ??
+    payload?.payment_status ??
+    "";
 
-  // Parse JSON AFTER signature verification
+  const cfPaymentId =
+    payload?.data?.payment?.cf_payment_id ??
+    payload?.payment?.cf_payment_id ??
+    payload?.cf_payment_id ??
+    null;
+
+  const orderStatus =
+    payload?.data?.order?.order_status ??
+    payload?.order?.order_status ??
+    payload?.order_status ??
+    "";
+
+  const merged = `${eventType} ${paymentStatus} ${orderStatus}`.toLowerCase();
+
+  // Success buckets seen in Cashfree:
+  // - order.paid / order.completed
+  // - payment.captured / payment.success
+  // - order_status: "PAID", "COMPLETED"
+  const success = /paid|completed|captured|payment_success/.test(merged);
+
+  // Failure/cancel buckets seen in Cashfree:
+  // - order.canceled / payment.failed / payment.user_dropped / payment.cancelled
+  // - order_status: "FAILED", "CANCELLED"
+  const failed = /failed|canceled|cancelled|user_dropped|payment_failure/.test(
+    merged
+  );
+
+  // Pending/in-process
+  const pending = /pending|authorized|initiated|created|requires_action/.test(
+    merged
+  );
+
+  const kind: "success" | "failed" | "pending" | "unknown" = success
+    ? "success"
+    : failed
+    ? "failed"
+    : pending
+    ? "pending"
+    : "unknown";
+
+  const details = merged.trim();
+
+  return { orderId, kind, details, cfOrderId, cfPaymentId, eventType };
+}
+
+export async function POST(req: Request) {
+  // 1) Read raw body (needed for signature)
+  const raw = await req.text();
+
+  // 2) Verify signature (enforce in prod)
+  const signature =
+    req.headers.get("x-webhook-signature") ||
+    req.headers.get("x-cf-signature") ||
+    req.headers.get("x-cf-webhook-signature") || // some integrations use this
+    null;
+
+  const isProd = process.env.NODE_ENV === "production";
+  const hasSecret = !!process.env.CASHFREE_WEBHOOK_SECRET;
+  const verified = verifySignature(raw, signature);
+
+  if (isProd && hasSecret && !verified) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  // 3) Parse JSON
   let payload: any;
   try {
     payload = JSON.parse(raw);
@@ -60,91 +131,77 @@ export async function POST(req: Request) {                     // ← standard R
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  console.log('WEBHOOK payload :: ', payload)
-
-  // Normalize fields from Cashfree
-  const orderId =
-    payload?.data?.order?.order_id ||
-    payload?.order?.order_id ||
-    payload?.order_id ||
-    null;
-
-  // status can appear under various keys; normalize to UPPER
-  const statusRaw =
-    payload?.data?.payment?.payment_status ||
-    payload?.payment?.payment_status ||
-    payload?.payment_status ||
-    payload?.data?.order?.order_status ||
-    payload?.order?.order_status ||
-    payload?.order_status ||
-    payload?.type ||
-    "";
-
-  const status = String(statusRaw).toUpperCase();
-  console.log('WEBHOOK status :: ', status)
-
+  // 4) Normalize status
+  const { orderId, kind, details, cfOrderId, cfPaymentId, eventType } =
+    normalizeStatus(payload);
   if (!orderId) {
-    return NextResponse.json({ error: "No order_id in webhook" }, { status: 400 });
+    return NextResponse.json(
+      { error: "No order_id in webhook" },
+      { status: 400 }
+    );
   }
-
-  // Define what counts as a success/failure
-  const isSuccess =
-    status.includes("SUCCESS") ||
-    status.includes("PAID") ||
-    status.includes("COMPLETED") ||
-    status.includes("CAPTURED") ||
-    status.includes("PAYMENT_SUCCESS");
-
-  const isFailed =
-    status.includes("FAILED") ||
-    status.includes("CANCELLED") ||
-    status.includes("PAYMENT_FAILED");
 
   try {
     await connectToDB();
-
     const order = await SubscriptionOrder.findOne({ orderId });
-    console.log('WEBHOOK order :: ', order)
+
+    // If we don’t know this order, ignore to avoid creating junk rows
     if (!order) {
-      // We don’t know this order — nothing to update
-      return NextResponse.json({ ok: true, note: "Order not found, ignoring." });
+      return NextResponse.json({
+        ok: true,
+        note: "Unknown order_id, ignored.",
+      });
     }
 
-    // Always persist the raw payload for audit/debugging
+    // Always store audit info
     order.raw = payload;
+    if (cfOrderId) order.cfOrderId = cfOrderId;
+    if (cfPaymentId) order.cfPaymentId = cfPaymentId;
+    order.lastWebhookEvent = eventType || order.lastWebhookEvent;
+    order.lastWebhookNote = details || order.lastWebhookNote;
 
-    if (isSuccess) {
+    // Idempotency: don’t downgrade a PAID order
+    if (order.status === "paid" && kind === "success") {
+      await order.save();
+      return NextResponse.json({ ok: true, note: "Already paid, ack." });
+    }
+
+    if (kind === "success") {
       order.status = "paid";
+      await order.save();
 
-      // Upgrade the user based on the plan saved in our order
+      // Upgrade user once, only if not already upgraded
       const user = await User.findOne({ clerkId: order.userId });
       if (user) {
-        user.plan = order.planId;                               // "starter" | "pro"
-        user.subscriptionProvider = "cashfree";
-        user.subscriptionId = order.orderId;
-        user.planRenewsAt = monthsFromNow(1);
-        user.cancelAtPeriodEnd = false;
-        await user.save();
+        const alreadyOnPlan =
+          user.plan === order.planId && user.subscriptionId === order.orderId;
+        if (!alreadyOnPlan) {
+          user.plan = order.planId as any; // "starter" | "pro"
+          user.subscriptionProvider = "cashfree";
+          user.subscriptionId = order.orderId;
+          user.planRenewsAt = monthsFromNow(1);
+          user.cancelAtPeriodEnd = false;
+          await user.save();
+        }
       }
 
-      await order.save();
       return NextResponse.json({ ok: true });
     }
 
-    if (isFailed) {
+    if (kind === "failed") {
       order.status = "failed";
       await order.save();
       return NextResponse.json({ ok: true });
     }
 
-    // For other intermediate events, just store and acknowledge
+    // pending/unknown → store and ack
     await order.save();
-    return NextResponse.json({ ok: true, status });
+    return NextResponse.json({ ok: true, kind, details });
   } catch (e) {
     console.error("[CASHFREE_WEBHOOK_ERROR]", e);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
-
-// ❌ Remove this — App Router route handlers do NOT support `export const config`
-// export const config = { api: { bodyParser: false } } as any;

@@ -7,10 +7,9 @@ import SubscriptionOrder from "@/models/SubscriptionOrder";
 import { CASHFREE_BASE_URL, cashfreeHeaders } from "@/lib/cashfree";
 import crypto from "crypto";
 
-// your price table (monthly)
 const PRICE_TABLE = {
-  starter: { amount: 499, currency: "INR", label: "Starter" }, // ₹499
-  pro: { amount: 999, currency: "INR", label: "Pro" }, // ₹999
+  starter: { amount: 499, currency: "INR", label: "Starter" },
+  pro: { amount: 999, currency: "INR", label: "Pro" },
 } as const;
 
 type PlanId = keyof typeof PRICE_TABLE;
@@ -26,11 +25,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Accept optional email/phone/name override from client
   const bodyIn = (await req.json()) as {
     planId?: PlanId;
     email?: string;
-    phone?: string; // allow client-provided phone
+    phone?: string;
     name?: string;
   };
 
@@ -49,31 +47,24 @@ export async function POST(req: NextRequest) {
 
     const { amount, currency } = PRICE_TABLE[planId];
 
-    // --- Derive customer details ---
     const email = (
       bodyIn.email?.trim() ||
       user.email?.trim() ||
       ""
     ).toLowerCase();
-    let phone = (bodyIn.phone || user.phone || "").replace(/[^\d]/g, ""); // digits only
+    let phone = (bodyIn.phone || user.phone || "").replace(/[^\d]/g, "");
     const name = bodyIn.name || user.name || user.fullName || "Customer";
 
     const isSandbox = CASHFREE_BASE_URL.includes("sandbox");
-    // In production, enforce a valid phone; in sandbox allow fallback
     if (!/^\d{6,15}$/.test(phone)) {
-      if (isSandbox) {
-        phone = "9999999999";
-      } else {
+      if (isSandbox) phone = "9999999999";
+      else {
         return NextResponse.json(
-          {
-            error:
-              "Phone number required. Provide a valid digits-only phone (6-15 digits).",
-          },
+          { error: "Phone number required (6–15 digits)." },
           { status: 400 }
         );
       }
     }
-
     if (!email) {
       return NextResponse.json({ error: "Email required" }, { status: 400 });
     }
@@ -87,14 +78,17 @@ export async function POST(req: NextRequest) {
       customer_details: {
         customer_id: userId,
         customer_email: email,
-        customer_phone: phone, // ✅ REQUIRED by Cashfree
+        customer_phone: phone,
         customer_name: name,
       },
       order_note: `Upgrade to ${planId}`,
       order_meta: {
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing/success?order_id=${orderId}`,
+        // ⬇️ NEUTRAL return page — we’ll verify actual status there
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/billing/return?order_id=${orderId}`,
         notify_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/cashfree`,
       },
+      // Optional: tag the plan for easier debugging/reporting
+      order_tags: { plan: planId },
     };
 
     const res = await fetch(`${CASHFREE_BASE_URL}/orders`, {
@@ -105,8 +99,6 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await res.json();
-    console.log('checkout data :: ', data)
-
     if (!res.ok) {
       console.error("[CASHFREE_ORDER_ERROR]", data);
       return NextResponse.json(
@@ -115,16 +107,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cashfree response may differ; try common fields
     const paymentLink =
       data?.payment_link ||
       data?.order?.payment_link ||
       data?.payment_session_url;
+    const paymentSessionId = data?.payment_session_id || null;
 
-    // Optional: you might prefer to return payment_session_id for Drop-in SDK
-    const paymentSessionId = data?.payment_session_id;
-
-    // Persist our order
+    // Create local order record (source of truth will be webhook + verify)
     await SubscriptionOrder.create({
       userId,
       planId,
@@ -138,7 +127,7 @@ export async function POST(req: NextRequest) {
       {
         orderId,
         paymentLink: paymentLink || null,
-        paymentSessionId: paymentSessionId || null,
+        paymentSessionId,
         orderStatus: data?.order_status || "CREATED",
       },
       { status: 200 }

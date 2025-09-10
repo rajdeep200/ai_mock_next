@@ -17,6 +17,14 @@ const speak = (text: string, onEnd?: () => void) => {
   utterance.lang = "en-US";
   utterance.rate = 1;
   utterance.pitch = 1;
+
+  const pick =
+    window.speechSynthesis.getVoices().find(v => v.name === "Google US English") ||
+    window.speechSynthesis.getVoices().find(v => v.name === "Samantha") ||
+    window.speechSynthesis.getVoices().find(v => v.lang?.toLowerCase().startsWith("en")) ||
+    null;
+  if (pick) utterance.voice = pick;
+  
   if (onEnd) utterance.onend = onEnd;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);

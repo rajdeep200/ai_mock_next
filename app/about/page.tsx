@@ -2,36 +2,121 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-    title: "About MockQube | AI-Powered DSA Mock Interviews",
+    title: "About MockQube | Your 24/7 AI Coding Interviewer",
     description:
-        "MockQube is a futuristic interview practice platform for developers. Run realistic DSA mock interviews, get adaptive AI prompts, instant voice interaction, and actionable feedback.",
+        "MockQube helps students and junior engineers ace DSA coding interviews with realistic AI mock interviews, instant feedback on code and communication, and a clear plan to improve.",
     keywords: [
-        "mock interview",
-        "DSA interview prep",
-        "coding interviews",
-        "technical interview practice",
-        "AI interview",
-        "developer interview",
+        "AI mock interview",
+        "DSA mock interviews",
+        "coding interview practice",
+        "technical interview preparation",
+        "time complexity feedback",
+        "data structures and algorithms",
+        "junior developer interview prep",
+        "FAANG interview prep"
     ],
     openGraph: {
-        title: "About MockQube | AI-Powered DSA Mock Interviews",
+        title: "About MockQube | Your 24/7 AI Coding Interviewer",
         description:
-            "Run realistic DSA mock interviews with adaptive AI, voice responses, and clear feedback. Built for devs who want serious prep.",
-        url: "https://your-domain.com/about",
+            "Practice like it’s the real thing. MockQube simulates a human interviewer, evaluates your code and clarity, and turns every session into a growth plan.",
+        url: "https://www.mockqube.com/about",
         siteName: "MockQube",
         images: [{ url: "/og.png", width: 1200, height: 630, alt: "MockQube" }],
         type: "website",
     },
     twitter: {
         card: "summary_large_image",
-        title: "About MockQube | AI-Powered DSA Mock Interviews",
+        title: "About MockQube | Your 24/7 AI Coding Interviewer",
         description:
-            "Realistic DSA mock interviews with adaptive AI, instant voice, and actionable feedback.",
+            "Realistic AI mock interviews for DSA — voice + code + instant, actionable feedback.",
         images: ["/og.png"],
     },
 };
 
 export default function AboutPage() {
+    const OUR_MISSION = [
+        {
+            title: "Real interview flow",
+            body:
+                "Ambiguous prompts, clarification, edge cases, and trade-offs — the same rhythm you’ll face onsite, not just a judge that checks correctness.",
+        },
+        {
+            title: "Speak + code together",
+            body:
+                "Think aloud with low-latency voice, then implement in the browser editor. Get feedback on structure, Big-O, and clarity — quickly.",
+        },
+        {
+            title: "Feedback that sticks",
+            body:
+                "Each session ends with strengths, gaps, and a targeted practice plan so you know exactly what to do next.",
+        },
+    ]
+
+    const HOW_IT_WORKS = [
+        {
+            step: "01",
+            title: "Choose your focus",
+            desc:
+                "Pick topics (Arrays → DP), difficulty, and target companies. The AI adapts to your level and goals.",
+        },
+        {
+            step: "02",
+            title: "Speak & solve",
+            desc:
+                "Clarify requirements, compare approaches, and code in a streamlined editor with real-time voice interaction.",
+        },
+        {
+            step: "03",
+            title: "Get coached",
+            desc:
+                "Receive instant feedback on approach, correctness, complexity, edge cases, and communication — like a sharp human interviewer.",
+        },
+        {
+            step: "04",
+            title: "Review & improve",
+            desc:
+                "Finish with an actionable summary and a targeted practice plan. Track progress across sessions in your dashboard.",
+        },
+    ]
+
+    const WHY_DEV_CHOOSES = [
+        {
+            k: "Nuanced feedback",
+            v: "Not just pass/fail — understand the why behind mistakes and how to fix them.",
+        },
+        {
+            k: "Progress you can see",
+            v: "Session history, topic coverage, and trend lines keep you focused on outcomes.",
+        },
+        {
+            k: "Privacy-first",
+            v: "Mindful data handling and encrypted traffic. Your practice stays yours.",
+        },
+    ]
+
+    const FAQ_LIST = [
+        {
+            q: "Is this only for DSA interviews?",
+            a: "DSA is the core today because it’s universal in tech interviews. We’ll add system design and role-specific rounds as we grow.",
+        },
+        {
+            q: "How realistic is the interview?",
+            a: "Expect ambiguity, follow-ups, and complexity questions. The flow mirrors human interviews so you build confidence, not just solutions.",
+        },
+        {
+            q: "Will my data be safe?",
+            a: "We encrypt network payloads and avoid collecting unnecessary personal data. You control your practice history.",
+        },
+        {
+            q: "Can I see previous sessions?",
+            a: "Yes. Your dashboard shows session summaries, trends, and weak areas so you can plan the next week of practice.",
+        },
+        {
+            q: "Do I need a mentor or peer to use it?",
+            a: "No. MockQube acts as your interviewer and coach 24/7 — practice whenever you want without scheduling hassles.",
+        },
+    ]
+
     return (
         <main className="relative min-h-screen overflow-hidden bg-black text-white">
             {/* Background layers (grid + glow orbs + scanlines) */}
@@ -48,17 +133,15 @@ export default function AboutPage() {
             <section className="relative z-10 mx-auto max-w-6xl px-5 sm:px-8 pt-14 sm:pt-24 pb-10">
                 <div className="max-w-3xl">
                     <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-300 backdrop-blur">
-                        About MockQube
+                        Our story & mission
                     </span>
                     <h1 className="mt-5 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-4xl font-extrabold leading-tight text-transparent sm:text-5xl">
-                        Futuristic <span className="text-green-400">AI</span> mock interviews
-                        for serious DSA prep
+                        The most accessible, realistic&nbsp;<span className="text-green-400">AI</span> mock interviews for DSA
                     </h1>
                     <p className="mt-4 text-gray-300 text-lg">
-                        MockQube is a focused practice space for developers to sharpen
-                        problem-solving under realistic interview pressure—clarify requirements,
-                        reason about trade-offs, and code efficiently while an AI interviewer
-                        adapts to your level.
+                        MockQube exists to fix interview prep for students and junior engineers. No more juggling
+                        problem lists, YouTube tips, and peer mocks. You practice with an AI interviewer that listens,
+                        asks follow-ups, evaluates your code and communication, and turns every session into a clear next-step plan.
                     </p>
                 </div>
             </section>
@@ -66,23 +149,7 @@ export default function AboutPage() {
             {/* Mission / Value */}
             <section className="relative z-10 mx-auto max-w-6xl px-5 sm:px-8 pb-8">
                 <div className="grid gap-6 lg:grid-cols-3">
-                    {[
-                        {
-                            title: "Realistic Flow",
-                            body:
-                                "Every session mirrors real loops—ambiguous prompts, clarifying questions, and follow-ups on complexity, edge cases, and trade-offs.",
-                        },
-                        {
-                            title: "Code + Voice",
-                            body:
-                                "Talk through your approach and submit code. Get tight feedback on correctness, Big-O, and potential improvements—fast.",
-                        },
-                        {
-                            title: "Actionable Summaries",
-                            body:
-                                "End with concise summaries outlining strengths, gaps, and a practice plan you can act on immediately.",
-                        },
-                    ].map((f) => (
+                    {OUR_MISSION.map((f) => (
                         <div
                             key={f.title}
                             className="rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-6 backdrop-blur hover:border-green-700/60 transition"
@@ -100,32 +167,7 @@ export default function AboutPage() {
                     How MockQube <span className="text-green-400">works</span>
                 </h2>
                 <div className="mt-6 grid gap-6 md:grid-cols-2">
-                    {[
-                        {
-                            step: "01",
-                            title: "Choose your focus",
-                            desc:
-                                "Pick company targets, difficulty, and duration. The AI tunes prompts to your goals and experience level.",
-                        },
-                        {
-                            step: "02",
-                            title: "Speak & solve",
-                            desc:
-                                "Discuss requirements, explore approaches, and write code in a streamlined editor with real-time voice interaction.",
-                        },
-                        {
-                            step: "03",
-                            title: "Get coached",
-                            desc:
-                                "Receive immediate feedback on structure, complexity, edge cases, and clarity—like a sharp human interviewer.",
-                        },
-                        {
-                            step: "04",
-                            title: "Review & improve",
-                            desc:
-                                "Read the end-of-session summary and follow a targeted practice plan. Track progress in your session history.",
-                        },
-                    ].map((s) => (
+                    {HOW_IT_WORKS.map((s) => (
                         <div
                             key={s.step}
                             className="relative rounded-2xl border border-gray-800 bg-gray-900/50 p-6 backdrop-blur"
@@ -145,20 +187,7 @@ export default function AboutPage() {
             {/* Why devs choose us */}
             <section className="relative z-10 mx-auto max-w-6xl px-5 sm:px-8 py-10">
                 <div className="grid gap-6 lg:grid-cols-3">
-                    {[
-                        {
-                            k: "Adaptive prompts",
-                            v: "Questions scale to your level, stack, and target companies.",
-                        },
-                        {
-                            k: "Low-latency voice",
-                            v: "Fast, conversational flow for natural practice.",
-                        },
-                        {
-                            k: "Private by design",
-                            v: "Encrypted traffic and mindful data handling.",
-                        },
-                    ].map((item) => (
+                    {WHY_DEV_CHOOSES.map((item) => (
                         <div
                             key={item.k}
                             className="rounded-2xl border border-gray-800 bg-black/50 p-6"
@@ -176,24 +205,7 @@ export default function AboutPage() {
                     Frequently asked <span className="text-green-400">questions</span>
                 </h2>
                 <div className="mt-6 grid gap-4">
-                    {[
-                        {
-                            q: "Is this only for DSA interviews?",
-                            a: "DSA is the core focus today because it’s universal in tech interviews. We’re expanding to more domains as we grow.",
-                        },
-                        {
-                            q: "How realistic is the interview?",
-                            a: "Prompts are intentionally ambiguous, with clarifying follow-ups and complexity questions—like a real onsite.",
-                        },
-                        {
-                            q: "Will my data be safe?",
-                            a: "We encrypt network payloads and avoid collecting unnecessary personal data. Your practice stays yours.",
-                        },
-                        {
-                            q: "Can I see previous sessions?",
-                            a: "Yes. Your interview history shows summaries and feedback so you can track improvement over time.",
-                        },
-                    ].map((f) => (
+                    {FAQ_LIST.map((f) => (
                         <details
                             key={f.q}
                             className="group rounded-xl border border-gray-800 bg-gray-900/50 p-4"
@@ -211,10 +223,11 @@ export default function AboutPage() {
             <section className="relative z-10 px-5 sm:px-8 pb-20">
                 <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-green-700/40 bg-gradient-to-br from-green-700/30 via-green-700/10 to-black p-8 text-center shadow-[0_0_60px_rgba(34,197,94,.18)] sm:p-12">
                     <h2 className="text-3xl font-bold sm:text-4xl">
-                        Ready to <span className="text-green-400">level up</span> your interview prep?
+                        Practice like it's the <span className="text-green-400">real interview</span>
                     </h2>
                     <p className="mx-auto mt-3 max-w-2xl text-gray-100/90">
-                        Join developers who practice with MockQube to build clarity, speed, and confidence.
+                        Start a session, get coached, and leave with a plan. Join students and junior engineers who
+                        use MockQube to build clarity, speed, and confidence.
                     </p>
                     <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
                         <a
@@ -245,8 +258,8 @@ export default function AboutPage() {
                             {
                                 "@type": "Organization",
                                 "name": "MockQube",
-                                "url": "https://your-domain.com",
-                                "logo": "https://your-domain.com/mockqubelogo.png",
+                                "url": "https://www.mockqube.com",
+                                "logo": "https://www.mockqube.com/mockqubelogo.png",
                                 "sameAs": [],
                             },
                             {
@@ -258,7 +271,7 @@ export default function AboutPage() {
                                         "acceptedAnswer": {
                                             "@type": "Answer",
                                             "text":
-                                                "DSA is the core focus today because it’s universal in tech interviews. We’re expanding to more domains as we grow.",
+                                                "DSA is the core today because it's universal in tech interviews. We'll add system design and role-specific rounds as we grow.",
                                         },
                                     },
                                     {
@@ -267,7 +280,7 @@ export default function AboutPage() {
                                         "acceptedAnswer": {
                                             "@type": "Answer",
                                             "text":
-                                                "Prompts are intentionally ambiguous, with clarifying follow-ups and complexity questions—like a real onsite.",
+                                                "Expect ambiguity, follow-ups, and complexity questions. The flow mirrors human interviews so you build confidence, not just solutions.",
                                         },
                                     },
                                     {
@@ -276,7 +289,7 @@ export default function AboutPage() {
                                         "acceptedAnswer": {
                                             "@type": "Answer",
                                             "text":
-                                                "We encrypt network payloads and avoid collecting unnecessary personal data. Your practice stays yours.",
+                                                "We encrypt network payloads and avoid collecting unnecessary personal data. You control your practice history.",
                                         },
                                     },
                                     {
@@ -285,9 +298,18 @@ export default function AboutPage() {
                                         "acceptedAnswer": {
                                             "@type": "Answer",
                                             "text":
-                                                "Yes. Your interview history shows summaries and feedback so you can track improvement over time.",
+                                                "Yes. Your dashboard shows session summaries, trends, and weak areas so you can plan the next week of practice.",
                                         },
                                     },
+                                    {
+                                        "@type": "Question",
+                                        name: "Do I need a mentor or peer to use it?",
+                                        acceptedAnswer: {
+                                            "@type": "Answer",
+                                            text:
+                                                "No. MockQube acts as your interviewer and coach 24/7 — practice whenever you want without scheduling hassles.",
+                                        },
+                                    }
                                 ],
                             },
                         ],

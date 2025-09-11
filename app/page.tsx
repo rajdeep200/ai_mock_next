@@ -24,20 +24,20 @@ export default function LandingPage() {
         <div className="mx-auto max-w-5xl">
           <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-300 backdrop-blur">
             <span className="h-1.5 w-1.5 animate-ping-slow rounded-full bg-green-400" />
-            Built for high-stakes technical interviews
+            Your 24/7 AI Coding Interviewer
           </span>
 
           <h1 className="mt-6 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-5xl font-extrabold leading-[1.1] text-transparent sm:text-6xl md:text-7xl">
-            Mock Interviews That
+            Mock Interviews that
             <br />
             <span className="text-green-400 drop-shadow-[0_0_30px_rgba(34,197,94,.35)]">
-              Feel Like the Real Thing
+              feel like the real thing
             </span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Practice DSA and company-style rounds with an adaptive AI interviewer. Speak naturally,
-            get instant follow-ups, and receive actionable feedback that compounds across sessions.
+            Practice DSA and company-style rounds with an adaptive AI interviewer. Think aloud, code in the browser,
+            get instant follow-ups, and leave each session with clear next steps.
           </p>
 
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
@@ -56,12 +56,12 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Floating stat cards */}
+        {/* Floating benefit cards (credibility-safe) */}
         <div className="mt-14 grid w-full max-w-5xl grid-cols-2 gap-4 sm:grid-cols-3">
           {[
-            { k: 'Improvement after 5 sessions', v: '↑ 70%*', icon: <FiTrendingUp /> },
-            { k: 'Avg. voice response time', v: '~200 ms', icon: <FiMic /> },
-            { k: 'Practice sessions completed', v: '25,000+', icon: <FiClock /> },
+            { k: 'Low-latency voice', v: 'Natural follow-ups', icon: <FiMic /> },
+            { k: 'Actionable feedback', v: 'Approach + Big-O', icon: <FiTrendingUp /> },
+            { k: 'Progress tracking', v: 'Sessions & trends', icon: <FiClock /> },
           ].map((s, i) => (
             <div
               key={i}
@@ -76,10 +76,6 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
-
-        <p className="mt-3 text-xs text-gray-500">
-          *Self-reported across beta users; varies by baseline and frequency.
-        </p>
       </section>
 
       {/* === Features (glass cards) === */}
@@ -90,8 +86,7 @@ export default function LandingPage() {
               Everything you need to <span className="text-green-400">perform under pressure</span>
             </h2>
             <p className="mt-3 text-gray-300">
-              MockQube compresses weeks of prep into focused, measurable reps—without scheduling or
-              coordination overhead.
+              Compress weeks of prep into focused, measurable reps — without scheduling hassles or peer coordination.
             </p>
           </div>
 
@@ -99,32 +94,32 @@ export default function LandingPage() {
             {[
               {
                 title: 'Interviewer-style prompts',
-                desc: 'Ambiguous problem statements with clarifying follow-ups—just like on site.',
+                desc: 'Ambiguous statements with clarifying follow-ups — just like onsite.',
                 icon: <FiMessageSquare />,
               },
               {
                 title: 'Adaptive difficulty',
-                desc: 'Questions scale by role, seniority, and target companies you choose.',
+                desc: 'Questions scale by topic, level, and target companies.',
                 icon: <FiCpu />,
               },
               {
                 title: 'Low-latency voice',
-                desc: 'Speak your approach and get immediate voice feedback or hints.',
+                desc: 'Speak your approach and get immediate hints or nudges.',
                 icon: <FiMic />,
               },
               {
                 title: 'Actionable scoring',
-                desc: 'Signal, reasoning, edge cases, and communication—scored every session.',
+                desc: 'Signal, reasoning, edge cases, and communication — graded each session.',
                 icon: <FiTrendingUp />,
               },
               {
                 title: 'Progress you can track',
-                desc: 'Session history, trends, and summaries to target your weak areas.',
+                desc: 'History, trends, and summaries to target weak areas.',
                 icon: <FiClock />,
               },
               {
-                title: 'Privacy first',
-                desc: 'End-to-end encrypted transport; your practice stays yours.',
+                title: 'Privacy-first',
+                desc: 'Encrypted transport and mindful data handling — your practice stays yours.',
                 icon: <FiShield />,
               },
             ].map((f, i) => (
@@ -145,7 +140,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* === Testimonials (glass rail) === */}
       {/* === Testimonials / Social Proof (pre-launch safe) === */}
       <section className="relative z-10 px-6 py-20">
         <div className="mx-auto max-w-5xl">
@@ -166,8 +160,7 @@ export default function LandingPage() {
 
             <figure className="rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-6 text-left backdrop-blur">
               <blockquote className="italic text-gray-300">
-                “Over <b>500 developers</b> have already joined our waitlist to
-                practice smarter interviews with MockQube.”
+                “Join our waitlist to shape the product and get early perks.”
               </blockquote>
               <figcaption className="mt-4 font-semibold text-green-400">
                 — MockQube Team
@@ -187,7 +180,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-
       {/* === CTA === */}
       <section className="relative z-10 px-6 pb-24">
         <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-green-700/40 bg-gradient-to-br from-green-700/30 via-green-700/10 to-black p-8 text-center shadow-[0_0_60px_rgba(34,197,94,.18)] sm:p-12">
@@ -195,7 +187,7 @@ export default function LandingPage() {
             Turn practice into <span className="text-green-400">offers</span>
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-gray-100/90">
-            Do focused reps that mirror top-tier interviews. Speak, get feedback, repeat—until it’s muscle memory.
+            Do focused reps that mirror top-tier interviews. Speak, get feedback, repeat — until it’s muscle memory.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
             <Link href="/home" className="group">

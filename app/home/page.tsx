@@ -23,34 +23,35 @@ export default function HomePage() {
             <section className="relative z-10 mx-auto flex w-full max-w-6xl flex-col items-center px-6 pt-24 pb-14 text-center sm:pt-28">
                 <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-300 backdrop-blur">
                     <span className="h-1.5 w-1.5 animate-ping-slow rounded-full bg-green-400" />
-                    DSA Focus • Real interview energy
+                    Your 24/7 AI Coding Interviewer
                 </span>
 
                 <h1 className="mt-5 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-4xl font-extrabold leading-[1.1] text-transparent sm:text-6xl md:text-7xl">
-                    Crack DSA Interviews with{' '}
-                    <span className="text-green-400 drop-shadow-[0_0_30px_rgba(34,197,94,.35)]">Confidence</span>
+                    Practice DSA Interviews{' '}
+                    <span className="text-green-400 drop-shadow-[0_0_30px_rgba(34,197,94,.35)]">like the real thing</span>
                 </h1>
 
                 <p className="mx-auto mt-5 max-w-2xl text-lg text-gray-300 sm:text-xl">
-                    Real-time mock interviews powered by AI. Solve real coding problems, feel real pressure, get real feedback.
+                    Get grilled by an AI interviewer, think aloud, code in the browser, and receive instant feedback on approach,
+                    correctness, and complexity—so you walk into real interviews with confidence.
                 </p>
 
                 <div className="mt-9">
                     <Link href="/start-interview" className="group">
                         <button className="relative inline-flex items-center gap-2 rounded-full bg-green-600 px-7 py-3 text-lg font-semibold text-white transition-all hover:bg-green-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400">
                             <span className="absolute inset-0 -z-10 rounded-full bg-green-500/30 blur-lg transition-opacity group-hover:opacity-100" />
-                            Start DSA Mock Interview
+                            Start Free Mock Interview
                             <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />
                         </button>
                     </Link>
                 </div>
 
-                {/* Floating mini-stats */}
+                {/* Floating mini-stats — credibility-safe benefits instead of vanity numbers */}
                 <div className="mt-12 grid w-full max-w-5xl grid-cols-2 gap-4 sm:grid-cols-3">
                     {[
-                        { k: 'Avg. Improvement', v: '72%', icon: <FiTrendingUp /> },
-                        { k: 'Voice Latency', v: '~200ms', icon: <FiMic /> },
-                        { k: 'Sessions Run', v: '25k+', icon: <FiClock /> },
+                        { k: 'Low-latency voice', v: 'Natural follow-ups', icon: <FiMic /> },
+                        { k: 'Actionable feedback', v: 'Approach + Big-O', icon: <FiTrendingUp /> },
+                        { k: 'Progress tracking', v: 'Sessions & trends', icon: <FiClock /> },
                     ].map((s, i) => (
                         <div
                             key={i}
@@ -66,7 +67,6 @@ export default function HomePage() {
                         </div>
                     ))}
                 </div>
-
             </section>
 
             {/* === How It Works === */}
@@ -78,9 +78,9 @@ export default function HomePage() {
 
                     <div className="grid gap-6 text-center sm:grid-cols-3">
                         {[
-                            { title: 'Select Duration', desc: 'Choose how long you want to be on the hot seat.' },
-                            { title: 'Get Real DSA Problems', desc: 'Ambiguous, layered prompts just like real interviews.' },
-                            { title: 'Receive Feedback', desc: 'Immediate, actionable summary and next steps.' },
+                            { title: 'Pick your focus', desc: 'Choose topics, difficulty, and target companies.' },
+                            { title: 'Speak & solve', desc: 'Clarify requirements, discuss trade-offs, and code in the browser.' },
+                            { title: 'Get coached', desc: 'Immediate feedback on approach, complexity, and clarity—plus next steps.' },
                         ].map((step, idx) => (
                             <div
                                 key={idx}
@@ -104,12 +104,12 @@ export default function HomePage() {
 
                     <div className="grid gap-6 md:grid-cols-2">
                         {[
-                            { t: 'Voice-enabled mock interviews', i: <FiMic /> },
-                            { t: 'Company-specific DSA questions', i: <FiCpu /> },
-                            { t: 'Step-by-step problem discussion', i: <FiTrendingUp /> },
-                            { t: 'Hint-only guidance (no full answers)', i: <FiArrowRight /> },
-                            { t: 'Follow-ups on time & space complexity', i: <FiClock /> },
-                            { t: 'Simulates real interview pressure', i: <FiTrendingUp /> },
+                            { t: 'Voice-enabled mock interviews (think aloud)', i: <FiMic /> },
+                            { t: 'Company-aware DSA questions by topic & level', i: <FiCpu /> },
+                            { t: 'Structured problem discussion (requirements → edges → tests)', i: <FiTrendingUp /> },
+                            { t: 'Hint-first guidance (learn, don’t memorize answers)', i: <FiArrowRight /> },
+                            { t: 'Follow-ups on time & space complexity (Big-O clarity)', i: <FiClock /> },
+                            { t: 'Real interview pressure — with constructive coaching', i: <FiTrendingUp /> },
                         ].map((f, idx) => (
                             <div
                                 key={idx}
@@ -156,11 +156,18 @@ export default function HomePage() {
                 </div>
             </section>
 
-            {/* === Testimonials (placeholder) === */}
+            {/* === Social proof placeholder === */}
             <section className="relative z-10 w-full border-t border-green-800/40 px-6 py-16 text-center">
                 <div className="mx-auto max-w-4xl">
                     <h2 className="mb-6 text-3xl font-bold text-green-400 sm:text-4xl">What our users say</h2>
-                    <p className="italic text-green-300/90">🚧 Testimonials coming soon…</p>
+                    <p className="italic text-green-300/90">
+                        🚧 Testimonials coming soon — join early and help shape MockQube.
+                    </p>
+                    <div className="mt-6">
+                        <Link href="/pricing" className="group inline-flex items-center gap-2 text-green-300 hover:text-green-200">
+                            See Plans <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />
+                        </Link>
+                    </div>
                 </div>
             </section>
 

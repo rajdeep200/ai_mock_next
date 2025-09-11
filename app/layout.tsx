@@ -18,9 +18,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MockQube.com",
+  title: "MockQube.com | Your 24/7 AI Interviewer",
   description:
-    "MockQube is an AI-powered platform for DSA mock interviews. Practice algorithm problems in a modular cube format, get real-time feedback, and boost your coding confidence.",
+    "Ace your coding interviews with MockQube — the AI-powered mock interview partner for students and junior engineers. Practice DSA problems, get instant feedback on your code and communication, and walk into real interviews with confidence.",
   icons: {
     icon: "/mockqubelogo.png",
   },

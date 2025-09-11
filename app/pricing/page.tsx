@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { load } from "@cashfreepayments/cashfree-js";
-import { FiLoader, FiZap, FiCheck, FiStar } from "react-icons/fi";
+import { FiLoader, FiZap, FiCheck, FiStar, FiPhone } from "react-icons/fi";
 
 type Plan = {
   id: "free" | "starter" | "pro";
@@ -16,10 +16,25 @@ type PlanResp = {
   usage: { interviewsCount: number; month: string };
 };
 
+type UserLite = {
+  name?: string;
+  phone?: string;
+}
+
 export default function PricingPage() {
   const [info, setInfo] = useState<PlanResp | null>(null);
   const [loadingPlan, setLoadingPlan] = useState<null | "starter" | "pro">(null);
   const [busy, setBusy] = useState(false);
+
+  const [user, setUser] = useState<UserLite | null>(null)
+  const [loadingUser, setLoadingUser] = useState<boolean>(false)
+  const [showPhoneModal, setShowPhoneModal] = useState(false)
+  const [phoneInput, setPhoneInput] = useState("")
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+
+  const isValidPhone = (p?: string) => !!p && /^\d{6,15}$/.test(p);
+  const phoneMissing = !isValidPhone(user?.phone);
 
   const loadPlan = async () => {
     try {
@@ -32,8 +47,26 @@ export default function PricingPage() {
     }
   };
 
+  const loadUser = async () => {
+    setLoadingUser(true)
+    try {
+      const res = await fetch('/api/user', { cache: 'no-store' })
+      if (res.ok) {
+        const data = await res.json()
+        setUser({ name: data?.user?.name, phone: data?.user?.phone })
+      } else {
+        setUser(null)
+      }
+    } catch (error) {
+      setUser(null);
+    } finally {
+      setLoadingUser(false)
+    }
+  }
+
   useEffect(() => {
     loadPlan();
+    loadUser();
   }, []);
 
   const handleUpgrade = async (planId: "starter" | "pro") => {
@@ -72,6 +105,42 @@ export default function PricingPage() {
 
   const current = info?.plan.id || "free";
 
+  const validatePhone = (raw: string) => {
+    const digits = raw.replace(/[^\d]/g, "");
+    if (!/^\d{6,15}$/.test(digits)) {
+      return { ok: false, value: digits, error: "Enter 6–15 digits only." };
+    }
+    return { ok: true, value: digits, error: null };
+  };
+
+  const savePhone = async () => {
+    setPhoneError(null);
+    const v = validatePhone(phoneInput);
+    if (!v.ok) {
+      setPhoneError(v.error);
+      return;
+    }
+    try {
+      setPhoneSaving(true);
+      const res = await fetch("/api/user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: v.value }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        setPhoneError(msg || "Failed to save phone.");
+        return;
+      }
+      await loadUser();
+      setShowPhoneModal(false);
+    } catch {
+      setPhoneError("Network error. Please try again.");
+    } finally {
+      setPhoneSaving(false);
+    }
+  };
+
   return (
     <main className="relative min-h-screen bg-black text-white overflow-hidden">
       {/* Futuristic background */}
@@ -93,6 +162,25 @@ export default function PricingPage() {
           Choose a plan that fits your interview prep — upgrade anytime.
         </p>
       </div>
+
+      {!loadingUser && phoneMissing && (
+        <div className="relative z-10 mx-auto max-w-3xl px-4 mt-6">
+          <div className="rounded-2xl border border-yellow-600/40 bg-yellow-500/10 backdrop-blur p-4 sm:p-5">
+            <p className="text-sm text-yellow-200">
+              <span className="font-semibold">Action needed:</span> Please add your phone number
+              before upgrading. It’s required to complete payment.
+            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => setShowPhoneModal(true)}
+                className="cursor-pointer mt-2 inline-flex items-center gap-2 rounded-lg border border-yellow-500/40 px-3 py-1.5 text-yellow-100 hover:bg-yellow-500/10"
+              >
+                <FiPhone /> Add Number
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Usage banner */}
       {info && (
@@ -161,14 +249,16 @@ export default function PricingPage() {
                 "Company-style questions",
               ]}
               ctaLabel={
-                current === "starter"
-                  ? "Current Plan"
-                  : loadingPlan === "starter"
-                    ? "Redirecting…"
-                    : "Upgrade to Starter"
+                phoneMissing
+                  ? "Add phone in Profile"
+                  : current === "starter"
+                    ? "Current Plan"
+                    : loadingPlan === "starter"
+                      ? "Redirecting…"
+                      : "Upgrade to Starter"
               }
-              onClick={() => handleUpgrade("starter")}
-              disabled={current === "starter" || loadingPlan !== null}
+              onClick={() => !phoneMissing && handleUpgrade("starter")}
+              disabled={current === "starter" || loadingPlan !== null || phoneMissing}
               glow
             />
 
@@ -185,20 +275,82 @@ export default function PricingPage() {
                 "Company-style + premium TTS + export",
               ]}
               ctaLabel={
-                current === "pro"
-                  ? "Current Plan"
-                  : loadingPlan === "pro"
-                    ? "Redirecting…"
-                    : "Upgrade to Pro"
+                phoneMissing
+                  ? "Add phone in Profile"
+                  : current === "pro"
+                    ? "Current Plan"
+                    : loadingPlan === "pro"
+                      ? "Redirecting…"
+                      : "Upgrade to Pro"
               }
-              onClick={() => handleUpgrade("pro")}
-              disabled={current === "pro" || loadingPlan !== null}
+              onClick={() => !phoneMissing && handleUpgrade("pro")}
+              disabled={current === "pro" || loadingPlan !== null || phoneMissing}
               glow
               featured
             />
           </div>
         )}
       </section>
+
+      {/* NEW: Phone modal */}
+      {showPhoneModal && (
+        <>
+          <button
+            aria-hidden
+            className="fixed inset-0 z-40 bg-black/60"
+            onClick={() => setShowPhoneModal(false)}
+          />
+          <div className="fixed inset-0 z-50 grid place-items-center px-4">
+            <div className="w-full max-w-md rounded-2xl border border-emerald-700/40 bg-gray-900/80 backdrop-blur p-5 shadow-[0_0_40px_rgba(34,197,94,.18)]">
+              <h3 className="text-xl font-semibold text-emerald-300 flex items-center gap-2">
+                <FiPhone /> Add Phone Number
+              </h3>
+              <p className="mt-2 text-sm text-gray-300">
+                We use your number for payment verification. Digits only (6–15).
+              </p>
+
+              <div className="mt-4">
+                <label className="block text-sm text-gray-400 mb-1">Phone</label>
+                <input
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="e.g., 9876543210"
+                  className="w-full rounded-lg border border-gray-700 bg-black/50 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {phoneError && (
+                  <p className="mt-2 text-xs text-red-400">{phoneError}</p>
+                )}
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowPhoneModal(false)}
+                  className="cursor-pointer rounded-lg border border-gray-700 px-4 py-2 text-gray-200 hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={savePhone}
+                  disabled={phoneSaving}
+                  className="cursor-pointer inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  {phoneSaving ? (
+                    <>
+                      <FiLoader className="animate-spin" /> Saving…
+                    </>
+                  ) : (
+                    <>
+                      <FiCheck /> Save
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* local animations */}
       <style jsx>{`

@@ -8,7 +8,7 @@ import { CASHFREE_BASE_URL, cashfreeHeaders } from "@/lib/cashfree";
 import crypto from "crypto";
 
 const PRICE_TABLE = {
-  starter: { amount: 499, currency: "INR", label: "Starter" },
+  starter: { amount: 9, currency: "INR", label: "Starter" },
   pro: { amount: 999, currency: "INR", label: "Pro" },
 } as const;
 

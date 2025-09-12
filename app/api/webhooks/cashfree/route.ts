@@ -120,6 +120,7 @@ export async function POST(req: Request) {
   const verified = verifySignature(raw, signature);
 
   if (isProd && hasSecret && !verified) {
+    console.log('<<-- Invalid Signature ERROR -->>')
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 

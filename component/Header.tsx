@@ -1,7 +1,7 @@
 // components/Header.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   SignedIn,
   SignedOut,
@@ -10,10 +10,30 @@ import {
 } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
-import { FiLogIn, FiClock, FiMenu, FiX, FiCreditCard } from "react-icons/fi";
+import {
+  FiLogIn,
+  FiClock,
+  FiMenu,
+  FiX,
+  FiCreditCard
+} from "react-icons/fi";
 
 export default function Header() {
   const [open, setOpen] = useState(false);
+
+  // [MOBILE] Lock scroll & ESC to close when menu is open
+  useEffect(() => {
+    if (open) {
+      const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+      document.addEventListener("keydown", onKey);
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.removeEventListener("keydown", onKey);
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [open]);
 
   return (
     <header className="sticky top-0 z-50">
@@ -78,12 +98,13 @@ export default function Header() {
               <UserButton />
             </SignedIn>
             <button
-              aria-label="Open menu"
+              aria-label={open ? "Close menu" : "Open menu"}
               aria-expanded={open}
               aria-controls="mobile-menu"
               onClick={() => setOpen((v) => !v)}
-              className="p-2 rounded-xl text-gray-300 hover:bg-gray-800/80 border border-gray-800/80 transition"
+              className="relative z-[70] p-2 rounded-xl text-gray-300 hover:bg-gray-800/80 border border-gray-800/80 transition"
             >
+              {/* [MOBILE] This toggles correctly; kept high z so it’s clickable above sheet */}
               {open ? <FiX size={20} /> : <FiMenu size={20} />}
             </button>
           </div>
@@ -98,12 +119,32 @@ export default function Header() {
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-40 md:hidden bg-black/50 backdrop-blur-sm"
             />
+
+            {/* [MOBILE] Centered sheet instead of right-anchored popover */}
             <div
               id="mobile-menu"
-              className="absolute right-3 top-20 z-50 w-[88%] max-w-72 rounded-2xl border border-emerald-700/30 bg-gray-950/90 backdrop-blur shadow-[0_20px_60px_rgba(16,185,129,.18)] md:hidden"
+              className="fixed left-1/2 top-[72px] z-[65] w-[92%] max-w-sm -translate-x-1/2 rounded-2xl border border-emerald-700/30 bg-gray-950/90 backdrop-blur shadow-[0_20px_60px_rgba(16,185,129,.18)] md:hidden"
             >
+              {/* [MOBILE] Header row with explicit close button */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800/80">
+                <span className="text-sm font-medium text-green-300">Menu</span>
+                <button
+                  aria-label="Close menu"
+                  onClick={() => setOpen(false)}
+                  className="p-2 rounded-lg text-gray-300 hover:bg-gray-900/70 border border-transparent hover:border-emerald-600/40 transition"
+                >
+                  <FiX size={18} />
+                </button>
+              </div>
+
               <nav className="p-2">
                 <SignedIn>
+                  <MobileItem href="/" onClick={() => setOpen(false)}>
+                    Home
+                  </MobileItem>
+                  <MobileItem href="/start-interview" onClick={() => setOpen(false)}>
+                    Start Interview
+                  </MobileItem>
                   <MobileItem href="/history" onClick={() => setOpen(false)} icon={<FiClock size={18} />}>
                     History
                   </MobileItem>
@@ -113,10 +154,16 @@ export default function Header() {
                 </SignedIn>
 
                 <SignedOut>
+                  <MobileItem href="/" onClick={() => setOpen(false)}>
+                    Home
+                  </MobileItem>
+                  <MobileItem href="/pricing" onClick={() => setOpen(false)}>
+                    Pricing
+                  </MobileItem>
                   <SignInButton forceRedirectUrl="/home" mode="modal">
                     <button
                       onClick={() => setOpen(false)}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-800/80 bg-gray-900/70 text-gray-200 hover:border-emerald-600/50 hover:text-white transition"
+                      className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-gray-800/80 bg-gray-900/70 text-gray-200 hover:border-emerald-600/50 hover:text-white transition"
                     >
                       <FiLogIn size={18} />
                       <span>Sign in</span>

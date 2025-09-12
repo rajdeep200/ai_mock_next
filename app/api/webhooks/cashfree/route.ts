@@ -11,57 +11,21 @@ export const dynamic = "force-dynamic";
 
 /** Verify HMAC-SHA256 signature (base64) with timingSafeEqual */
 function verifySignature(rawBody: string, signature: string | null) {
-  const secret = process.env.CASHFREE_WEBHOOK_SECRET;
-  console.log('secret -->> ', secret)
+  // [WEBHOOK-SIG] must have secret & header
+  const secret = process.env.CASHFREE_WEBHOOK_SECRET || "";
   if (!secret || !signature) return false;
 
-  // const expected = crypto
-  //   .createHmac("sha256", secret)
-  //   .update(rawBody, "utf8")
-  //   .digest("base64");
-  try {
-    // normalize header (remove possible prefixes)
-    const cleanSig = signature.replace(/^(sha256=|hmac=)/i, "").trim();
-    console.log('cleanSig -->>', cleanSig)
+  // [WEBHOOK-SIG] some libs prefix with `sha256=` or `hmac=`
+  const clean = signature.replace(/^(sha256=|hmac=)/i, "").trim();
 
-    // parse and sort keys
-    const parsed = JSON.parse(rawBody || "{}");
-    console.log('parsed -->> ', parsed)
-    const keys = Object.keys(parsed).sort();
-    console.log('keys -->> ', keys)
+  // [WEBHOOK-SIG] HMAC over the *raw bytes*, base64 output
+  const expectedB64 = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
 
-    // concatenate values in key order (objects -> JSON.stringify)
-    let postDataString = "";
-    for (const k of keys) {
-      const v = parsed[k];
-      if (v === null || typeof v === "undefined") {
-        postDataString += "";
-      } else if (typeof v === "object") {
-        postDataString += JSON.stringify(v);
-      } else {
-        postDataString += String(v);
-      }
-    }
-
-    console.log('postDataString -->> ', postDataString)
-
-    // compute expected HMAC (base64)
-    const expected = crypto
-      .createHmac("sha256", secret)
-      .update(postDataString, "utf8")
-      .digest("base64");
-    console.log('expected -->> ', expected)
-
-    const sigBuf = Buffer.from(cleanSig, "base64");
-    console.log('sigBuf -->> ', sigBuf)
-    const expBuf = Buffer.from(expected, "base64");
-    console.log('expBuf -->> ', expBuf)
-
-    if (sigBuf.length !== expBuf.length) return false;
-    return crypto.timingSafeEqual(sigBuf, expBuf);
-  } catch {
-    return false;
-  }
+  // [WEBHOOK-SIG] constant-time compare
+  const a = Buffer.from(clean, "base64");
+  const b = Buffer.from(expectedB64, "base64");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 /** Map Cashfree event/status to a canonical bucket */

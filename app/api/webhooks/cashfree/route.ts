@@ -115,9 +115,15 @@ export async function POST(req: Request) {
     req.headers.get("x-cf-webhook-signature") || // some integrations use this
     null;
 
+  console.log('signature -->> ', signature)
+
   const isProd = process.env.NODE_ENV === "production";
   const hasSecret = !!process.env.CASHFREE_WEBHOOK_SECRET;
   const verified = verifySignature(raw, signature);
+
+  console.log('isProd -->> ', isProd)
+  console.log('hasSecret -->> ', hasSecret)
+  console.log('verified -->> ', verified)
 
   if (isProd && hasSecret && !verified) {
     console.log('<<-- Invalid Signature ERROR -->>')
@@ -131,6 +137,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+  console.log('payload -->> ', payload)
 
   // 4) Normalize status
   const { orderId, kind, details, cfOrderId, cfPaymentId, eventType } =
@@ -142,9 +149,13 @@ export async function POST(req: Request) {
     );
   }
 
+  console.log('orderId, kind, details, cfOrderId, cfPaymentId, eventType -->> ', orderId, kind, details, cfOrderId, cfPaymentId, eventType)
+
   try {
     await connectToDB();
     const order = await SubscriptionOrder.findOne({ orderId });
+
+    console.log('order -->> ', order)
 
     // If we don’t know this order, ignore to avoid creating junk rows
     if (!order) {
@@ -159,7 +170,9 @@ export async function POST(req: Request) {
     if (cfOrderId) order.cfOrderId = cfOrderId;
     if (cfPaymentId) order.cfPaymentId = cfPaymentId;
     order.lastWebhookEvent = eventType || order.lastWebhookEvent;
-    order.lastWebhookNote = details || order.lastWebhookNote;
+    order.lastWebhookNote = details || order.lastWebhookNote; // most recent status text 
+    
+    console.log('order 2 -->> ', order)
 
     // Idempotency: don’t downgrade a PAID order
     if (order.status === "paid" && kind === "success") {
@@ -168,6 +181,7 @@ export async function POST(req: Request) {
     }
 
     if (kind === "success") {
+      console.log('Upgrading user... -->> ')
       order.status = "paid";
       await order.save();
 
@@ -176,6 +190,7 @@ export async function POST(req: Request) {
       if (user) {
         const alreadyOnPlan =
           user.plan === order.planId && user.subscriptionId === order.orderId;
+        console.log('alreadyOnPlan -->> ', alreadyOnPlan)
         if (!alreadyOnPlan) {
           user.plan = order.planId as any; // "starter" | "pro"
           user.subscriptionProvider = "cashfree";
@@ -184,6 +199,7 @@ export async function POST(req: Request) {
           user.cancelAtPeriodEnd = false;
           await user.save();
         }
+        console.log('user upgraded -->> ', user)  
       }
 
       return NextResponse.json({ ok: true });

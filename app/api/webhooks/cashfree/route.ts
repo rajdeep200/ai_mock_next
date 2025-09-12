@@ -12,47 +12,56 @@ export const dynamic = "force-dynamic";
 /** Verify HMAC-SHA256 signature (base64) with timingSafeEqual */
 function verifySignature(rawBody: string, signature: string | null) {
   const secret = process.env.CASHFREE_WEBHOOK_SECRET;
+  console.log('secret -->> ', secret)
   if (!secret || !signature) return false;
 
-  // header may come like "sha256=<base64>" or just "<base64>" or hex
-  const clean = signature.replace(/^(sha256=|hmac=)/i, "").trim();
-
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(rawBody, "utf8")
-    .digest("base64");
-
+  // const expected = crypto
+  //   .createHmac("sha256", secret)
+  //   .update(rawBody, "utf8")
+  //   .digest("base64");
   try {
-    const sigBuf = Buffer.from(clean, "base64");
-    const expBuf = Buffer.from(expected, "base64");
-    if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
-      return true;
-    }
-    // return crypto.timingSafeEqual(
-    //   Buffer.from(signature, "utf8"),
-    //   Buffer.from(expected, "utf8")
-    // );
-  } catch {
-    // return false;
-  }
+    // normalize header (remove possible prefixes)
+    const cleanSig = signature.replace(/^(sha256=|hmac=)/i, "").trim();
+    console.log('cleanSig -->>', cleanSig)
 
-  if (/^[0-9a-f]+$/i.test(clean)) {
-    const expectedHex = crypto
-      .createHmac("sha256", secret)
-      .update(rawBody)
-      .digest("hex");
-    try {
-      const sigBufHex = Buffer.from(clean, "hex");
-      const expBufHex = Buffer.from(expectedHex, "hex");
-      if (sigBufHex.length === expBufHex.length && crypto.timingSafeEqual(sigBufHex, expBufHex)) {
-        return true;
+    // parse and sort keys
+    const parsed = JSON.parse(rawBody || "{}");
+    console.log('parsed -->> ', parsed)
+    const keys = Object.keys(parsed).sort();
+    console.log('keys -->> ', keys)
+
+    // concatenate values in key order (objects -> JSON.stringify)
+    let postDataString = "";
+    for (const k of keys) {
+      const v = parsed[k];
+      if (v === null || typeof v === "undefined") {
+        postDataString += "";
+      } else if (typeof v === "object") {
+        postDataString += JSON.stringify(v);
+      } else {
+        postDataString += String(v);
       }
-    } catch {
-      return false;
     }
-  }
 
-  return false;
+    console.log('postDataString -->> ', postDataString)
+
+    // compute expected HMAC (base64)
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(postDataString, "utf8")
+      .digest("base64");
+    console.log('expected -->> ', expected)
+
+    const sigBuf = Buffer.from(cleanSig, "base64");
+    console.log('sigBuf -->> ', sigBuf)
+    const expBuf = Buffer.from(expected, "base64");
+    console.log('expBuf -->> ', expBuf)
+
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
 }
 
 /** Map Cashfree event/status to a canonical bucket */

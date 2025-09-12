@@ -2,10 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   compiler: {
-    // Strip console.* only in production
     removeConsole:
-      process.env.NODE_ENV === "production"
-        ? { exclude: ["error", "warn"] } // keep error/warn if you want
+      process.env.KEEP_LOGS === "1"
+        ? false
+        : process.env.NODE_ENV === "production"
+        ? { exclude: ["error", "warn"] }
         : false,
   },
 };

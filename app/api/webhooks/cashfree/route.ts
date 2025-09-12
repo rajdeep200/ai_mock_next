@@ -172,10 +172,10 @@ export async function POST(req: Request) {
   console.log('hasSecret -->> ', hasSecret)
   console.log('verified -->> ', verified)
 
-  if (isProd && hasSecret && !verified) {
-    console.log('<<-- Invalid Signature ERROR -->>')
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
+  // if (isProd && hasSecret && !verified) {
+  //   console.log('<<-- Invalid Signature ERROR -->>')
+  //   return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  // }
 
   // 3) Parse JSON
   let payload: any;

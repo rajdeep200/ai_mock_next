@@ -13,18 +13,46 @@ export const dynamic = "force-dynamic";
 function verifySignature(rawBody: string, signature: string | null) {
   const secret = process.env.CASHFREE_WEBHOOK_SECRET;
   if (!secret || !signature) return false;
+
+  // header may come like "sha256=<base64>" or just "<base64>" or hex
+  const clean = signature.replace(/^(sha256=|hmac=)/i, "").trim();
+
   const expected = crypto
     .createHmac("sha256", secret)
     .update(rawBody, "utf8")
     .digest("base64");
+
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(signature, "utf8"),
-      Buffer.from(expected, "utf8")
-    );
+    const sigBuf = Buffer.from(clean, "base64");
+    const expBuf = Buffer.from(expected, "base64");
+    if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return true;
+    }
+    // return crypto.timingSafeEqual(
+    //   Buffer.from(signature, "utf8"),
+    //   Buffer.from(expected, "utf8")
+    // );
   } catch {
-    return false;
+    // return false;
   }
+
+  if (/^[0-9a-f]+$/i.test(clean)) {
+    const expectedHex = crypto
+      .createHmac("sha256", secret)
+      .update(rawBody)
+      .digest("hex");
+    try {
+      const sigBufHex = Buffer.from(clean, "hex");
+      const expBufHex = Buffer.from(expectedHex, "hex");
+      if (sigBufHex.length === expBufHex.length && crypto.timingSafeEqual(sigBufHex, expBufHex)) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 /** Map Cashfree event/status to a canonical bucket */

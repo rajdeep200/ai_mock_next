@@ -18,9 +18,11 @@ function verifySignature(rawBody: string, signature: string | null) {
 
   // [WEBHOOK-SIG] some libs prefix with `sha256=` or `hmac=`
   const clean = signature.replace(/^(sha256=|hmac=)/i, "").trim();
+  console.log('clean -->> ', clean)
 
   // [WEBHOOK-SIG] HMAC over the *raw bytes*, base64 output
   const expectedB64 = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
+  console.log('expectedB64 -->> ', expectedB64)
 
   // [WEBHOOK-SIG] constant-time compare
   const a = Buffer.from(clean, "base64");

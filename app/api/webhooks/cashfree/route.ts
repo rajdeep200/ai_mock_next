@@ -38,18 +38,18 @@ function verifySignature(rawBody: string, signature: string | null) {
   if (!secret || !signature) return false;
   console.log('rawBody -->> ', rawBody)
 
-  const parsedBody = JSON.parse(rawBody);
+  const parsedBody = JSON.parse(rawBody).data;
   console.log('parsedBody -->> ', parsedBody);
 
-  const flattenedData = flattenObject(parsedBody);
-  console.log('flattenedData -->> ', flattenedData);
+  // const flattenedData = flattenObject(parsedBody);
+  // console.log('flattenedData -->> ', flattenedData);
 
-  const sortedKeys = Object.keys(flattenedData).sort();
+  const sortedKeys = Object.keys(parsedBody).sort();
   console.log('sortedKeys -->> ', sortedKeys);
 
   let postData = "";
   for (const key of sortedKeys) {
-    const value = flattenedData[key];
+    const value = parsedBody[key];
     // Concatenate the VALUE for each key
     postData += value !== null ? String(value) : '';
   }

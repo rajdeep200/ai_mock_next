@@ -5,6 +5,7 @@ import SubscriptionOrder from "@/models/SubscriptionOrder";
 import { User } from "@/models/User";
 import { monthsFromNow } from "@/lib/cashfree";
 import crypto from "crypto";
+import { auth } from "@clerk/nextjs/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,6 +107,8 @@ function normalizeStatus(payload: any): {
 }
 
 export async function POST(req: Request) {
+  const { userId } = await auth();
+  console.log('userId -->> ', userId)
   // 1) Read raw body (needed for signature)
   const raw = await req.text();
 

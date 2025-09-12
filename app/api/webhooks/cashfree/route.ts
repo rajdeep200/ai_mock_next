@@ -15,20 +15,29 @@ function verifySignature(rawBody: string, signature: string | null) {
   // [WEBHOOK-SIG] must have secret & header
   const secret = process.env.CASHFREE_WEBHOOK_SECRET || "";
   if (!secret || !signature) return false;
+  console.log('rawBody -->> ', rawBody)
+
+  const parsedBody = JSON.parse(rawBody || "{}");
+  const sortedKeys = Object.keys(parsedBody).sort();
+  let postData = "";
+  for (const key of sortedKeys) {
+    postData += parsedBody[key];
+  }
+  console.log('postData -->> ', postData)
 
   // [WEBHOOK-SIG] some libs prefix with `sha256=` or `hmac=`
-  const clean = signature.replace(/^(sha256=|hmac=)/i, "").trim();
-  console.log('clean -->> ', clean)
+  // const clean = signature.replace(/^(sha256=|hmac=)/i, "").trim();
+  // console.log('clean -->> ', clean)
 
   // [WEBHOOK-SIG] HMAC over the *raw bytes*, base64 output
-  const expectedB64 = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
+  const expectedB64 = crypto.createHmac("sha256", secret).update(postData).digest("base64");
   console.log('expectedB64 -->> ', expectedB64)
 
   // [WEBHOOK-SIG] constant-time compare
-  const a = Buffer.from(clean, "base64");
-  const b = Buffer.from(expectedB64, "base64");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  // const a = Buffer.from(clean, "base64");
+  // const b = Buffer.from(expectedB64, "base64");
+  // if (a.length !== b.length) return false;
+  return signature === expectedB64
 }
 
 /** Map Cashfree event/status to a canonical bucket */
@@ -109,8 +118,6 @@ function normalizeStatus(payload: any): {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  console.log('userId -->> ', userId)
   // 1) Read raw body (needed for signature)
   const raw = await req.text();
 

@@ -9,6 +9,7 @@ export const runtime = "nodejs";        // ✅ Mongoose requires Node.js runtime
 export const dynamic = "force-dynamic"; // ✅ don't pre-render; always run on server
 
 export async function GET() {
+  console.log("INSIDE PLAN API")
   const { userId } = await auth();
 
   // 1) Try to connect to Mongo first. If it fails, return Free defaults.

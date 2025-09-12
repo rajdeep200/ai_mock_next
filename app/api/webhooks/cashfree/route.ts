@@ -10,6 +10,27 @@ import { auth } from "@clerk/nextjs/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function flattenObject(obj: any, prefix = ''): Record<string, any> {
+  const flattened: Record<string, any> = {};
+  
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const value = obj[key];
+      const newKey = prefix ? `${prefix}.${key}` : key;
+      
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        // Recursively flatten nested objects
+        Object.assign(flattened, flattenObject(value, newKey));
+      } else {
+        // For primitive values, arrays, or null
+        flattened[newKey] = value;
+      }
+    }
+  }
+  
+  return flattened;
+}
+
 /** Verify HMAC-SHA256 signature (base64) with timingSafeEqual */
 function verifySignature(rawBody: string, signature: string | null) {
   // [WEBHOOK-SIG] must have secret & header
@@ -20,13 +41,17 @@ function verifySignature(rawBody: string, signature: string | null) {
   const parsedBody = JSON.parse(rawBody);
   console.log('parsedBody -->> ', parsedBody);
 
-  const sortedKeys = Object.keys(parsedBody).sort();
+  const flattenedData = flattenObject(parsedBody);
+  console.log('flattenedData -->> ', flattenedData);
+
+  const sortedKeys = Object.keys(flattenedData).sort();
   console.log('sortedKeys -->> ', sortedKeys);
 
   let postData = "";
   for (const key of sortedKeys) {
+    const value = flattenedData[key];
     // Concatenate the VALUE for each key
-    postData += parsedBody[key];
+    postData += value !== null ? String(value) : '';
   }
   console.log("postData -->> ", postData);
 

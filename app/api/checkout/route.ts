@@ -7,9 +7,8 @@ import SubscriptionOrder from "@/models/SubscriptionOrder";
 import { CASHFREE_BASE_URL, cashfreeHeaders } from "@/lib/cashfree";
 import crypto from "crypto";
 
-// 499
 const PRICE_TABLE = {
-  starter: { amount: 2, currency: "INR", label: "Starter" },
+  starter: { amount: 599, currency: "INR", label: "Starter" },
   pro: { amount: 999, currency: "INR", label: "Pro" },
 } as const;
 

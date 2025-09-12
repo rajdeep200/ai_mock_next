@@ -239,7 +239,7 @@ export default function PricingPage() {
             {/* Starter */}
             <PlanCard
               title="Starter"
-              price="₹499"
+              price="₹599"
               per="mo"
               highlight={current === "starter"}
               badge={current === "starter" ? "Current" : "Popular"}

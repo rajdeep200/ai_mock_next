@@ -19,7 +19,7 @@ export default function RefundPolicy() {
                     At <strong>MockQube</strong>, we want our users to have a smooth
                     experience. This Refund & Cancellation Policy explains how cancellations,
                     renewals, and refunds work for our subscription plans: Free, Starter
-                    (₹499/month), and Pro (₹999/month).
+                    (₹599/month), and Pro (₹999/month).
                 </p>
             </section>
 
@@ -38,7 +38,7 @@ export default function RefundPolicy() {
                     2. Paid Plans (Starter & Pro)
                 </h2>
                 <p className="mb-3">
-                    Both Starter (₹499/month) and Pro (₹999/month) are subscription-based
+                    Both Starter (₹599/month) and Pro (₹999/month) are subscription-based
                     plans that renew automatically each billing cycle unless canceled. By
                     subscribing, you agree to recurring billing.
                 </p>

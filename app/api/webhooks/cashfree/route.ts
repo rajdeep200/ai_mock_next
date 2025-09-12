@@ -168,9 +168,9 @@ export async function POST(req: Request) {
   const hasSecret = !!process.env.CASHFREE_WEBHOOK_SECRET;
   const verified = verifySignature(raw, signature);
 
-  console.log('isProd -->> ', isProd)
-  console.log('hasSecret -->> ', hasSecret)
-  console.log('verified -->> ', verified)
+  // console.log('isProd -->> ', isProd)
+  // console.log('hasSecret -->> ', hasSecret)
+  // console.log('verified -->> ', verified)
 
   // if (isProd && hasSecret && !verified) {
   //   console.log('<<-- Invalid Signature ERROR -->>')

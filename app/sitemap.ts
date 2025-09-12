@@ -16,6 +16,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/terms`, lastModified: now },
     { url: `${base}/pricing`, lastModified: now },
     { url: `${base}/history`, lastModified: now },
+    { url: `${base}/blog/what-is-mockqube`, lastModified: now },
   ];
 
   // OPTIONAL: add dynamic routes (e.g., blog posts, docs, etc.)

@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     siteName: "MockQube",
     images: [
       {
-        url: "/mockqubelogo.png",
+        url: "/favicon.ico",
         width: 256,
         height: 256,
         alt: "MockQube logo",
@@ -55,9 +55,9 @@ export const metadata: Metadata = {
       "Practice tech interviews with AI: coding/DSA, system design, behavioral."
   },
   icons: {
-    icon: "/mockqubelogo.png",
-    shortcut: "/mockqubelogo.png",
-    apple: "/mockqubelogo.png",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
   },
   applicationName: "MockQube",
   keywords: META_KEYWORDS
@@ -93,7 +93,7 @@ export default function RootLayout({
                 "@type": "Organization",
                 "name": "MockQube",
                 "url": "https://mockqube.com",
-                "logo": "https://mockqube.com/mockqubelogo.png",
+                "logo": "https://mockqube.com/favicon.ico",
                 "sameAs": [
                   "https://x.com/mockqube",
                   "https://www.linkedin.com/company/mockqube",

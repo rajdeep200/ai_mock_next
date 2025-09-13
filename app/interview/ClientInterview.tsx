@@ -10,25 +10,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getPromptsForInterview, SUMMARY_PROMPT } from "@/lib/prompts";
 import { decrypt, encrypt } from "@/lib/crypto";
+import dynamic from "next/dynamic";
 
-const speak = (text: string, onEnd?: () => void) => {
-  const normalizedText = text.replace(/\bO\(([^)]+)\)/g, "Big O of $1");
-  const utterance = new SpeechSynthesisUtterance(normalizedText);
-  utterance.lang = "en-US";
-  utterance.rate = 1;
-  utterance.pitch = 1;
-
-  const pick =
-    window.speechSynthesis.getVoices().find(v => v.name === "Google US English") ||
-    window.speechSynthesis.getVoices().find(v => v.name === "Samantha") ||
-    window.speechSynthesis.getVoices().find(v => v.lang?.toLowerCase().startsWith("en")) ||
-    null;
-  if (pick) utterance.voice = pick;
-  
-  if (onEnd) utterance.onend = onEnd;
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utterance);
-};
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-[260px] rounded-xl border border-gray-800 bg-black/40 text-gray-400">
+      Loading editor…
+    </div>
+  ),
+});
 
 type Stage = "intro" | "clarify" | "coding" | "review" | "wrapup";
 const TIME_WARNINGS_S = [300, 120, 60];
@@ -75,6 +66,14 @@ export default function InterviewPage() {
   const lastAgentActivityRef = useRef<number>(Date.now());   // when AI last spoke
   const silenceTriggeredRef = useRef<boolean>(false);        // avoid spamming
 
+  // [TTS] audio refs
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+
+   const monacoEditorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
+
+  // [SYNC] small in-memory cache: text -> objectURL (to avoid re-fetch on re-renders)
+  const ttsCache = useRef<Map<string, string>>(new Map());
 
   const { isSignedIn } = useAuth();
   const technology = searchParams.get("technology") ?? "React";
@@ -84,18 +83,84 @@ export default function InterviewPage() {
 
   const { transcript, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
+  const cancelTTS = () => {
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    } catch { }
+  };
+
+  // [SYNC][TTS] prepare TTS first (returns object URL) so UI and audio are in sync
+  const prepareTTS = async (text: string): Promise<string | null> => {
+    const normalized = text.replace(/\bO\(([^)]+)\)/g, "Big O of $1"); // keep your normalization
+    if (ttsCache.current.has(normalized)) return ttsCache.current.get(normalized)!;
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: normalized, voiceId: "Raveena", engine: "neural", rate: "medium" }),
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      ttsCache.current.set(normalized, url);
+      return url;
+    } catch {
+      return null;
+    }
+  };
+
+  // [TTS] play a prepared URL
+  const playTTS = async (url: string, onEnd?: () => void) => {
+    cancelTTS();
+    objectUrlRef.current = url;
+    audioRef.current = new Audio(url);
+    audioRef.current.onended = () => { onEnd?.(); };
+    audioRef.current.onerror = () => { onEnd?.(); };
+    try {
+      await audioRef.current.play();
+    } catch {
+      onEnd?.(); // autoplay blocked; keep flow going
+    }
+  };
+
+  const language = (() => {
+    // very simple mapping based on your query param
+    const tech = (technology || "").toLowerCase();
+    if (tech.includes("python")) return "python";
+    if (tech.includes("java")) return "java";
+    if (tech.includes("c++") || tech.includes("cpp")) return "cpp";
+    if (tech.includes("go")) return "go";
+    if (tech.includes("ts")) return "typescript";
+    return "javascript";
+  })();
+
   const markActivity = () => {
     lastActivityRef.current = Date.now();
     silenceTriggeredRef.current = false;
   };
 
-  // const endIfToken = async (reply: string) => {
-  //   if (containsEndToken(reply) && !endedRef.current) {
-  //     await handleEndInterview({ auto: true });
-  //     return true;
-  //   }
-  //   return false;
-  // };
+  const handleEditorMount = (
+    editor: import("monaco-editor").editor.IStandaloneCodeEditor,
+    monaco: typeof import("monaco-editor")
+  ) => {
+    monacoEditorRef.current = editor;
+
+    // Theme is already dark by default, but you can force:
+    // monaco.editor.setTheme("vs-dark");
+
+    // Cmd/Ctrl + Enter => submit
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+      if (!ended) handleCodeSubmit();
+    });
+  };
 
   // NEW: fetch plan and clamp duration BEFORE starting
   useEffect(() => {
@@ -152,7 +217,7 @@ export default function InterviewPage() {
   // Voice → text capture
   useEffect(() => {
     if (!transcript.trim()) return;
-    window.speechSynthesis.cancel();
+    cancelTTS(); // [TTS] stop TTS when user speaks
     const timeout = setTimeout(() => {
       const spoken = transcript.trim();
       resetTranscript();
@@ -173,7 +238,7 @@ export default function InterviewPage() {
   // Clean up
   useEffect(() => {
     const cleanUp = () => {
-      window.speechSynthesis.cancel();
+      cancelTTS(); // [TTS]
       SpeechRecognition.stopListening();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -198,7 +263,6 @@ export default function InterviewPage() {
       setLoading(true);
       const prompt = getPromptsForInterview(technology, allowedMinutes, company, level); // CHANGED
       const encPayload = await encrypt({ messages: [], systemPrompt: prompt }, ENC_KEY)
-      // console.log('encPayload :: ', encPayload)
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -207,9 +271,12 @@ export default function InterviewPage() {
       const encOut = await res.json();
       const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
 
+      // [SYNC] prepare TTS BEFORE rendering text
+      const preparedUrl = await prepareTTS(data.reply);
+
       const assistantMsg = { role: "assistant" as const, content: data.reply };
       setHistory([assistantMsg]);
-      setAiReply(data.reply);
+      setAiReply(data.reply); // render after we have audio ready
       lastAgentActivityRef.current = Date.now();
       silenceTriggeredRef.current = false;
       setLoading(false);
@@ -221,7 +288,15 @@ export default function InterviewPage() {
 
       markActivity();
       setStage("intro");
-      setTimeout(() => speak(data.reply, () => micOn && startListening()), 400);
+
+      // [SYNC] play immediately on next frame so UI & audio feel simultaneous
+      requestAnimationFrame(() => {
+        if (preparedUrl) {
+          void playTTS(preparedUrl, () => micOn && startListening());
+        } else {
+          if (micOn) startListening();
+        }
+      });
     };
     startInterview();
   }, [isSignedIn, browserSupportsSpeechRecognition, company, level, technology, micOn, allowedMinutes]);
@@ -238,7 +313,6 @@ export default function InterviewPage() {
 
     const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level); // CHANGED (safety)
     const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
-    console.log('encPayload :: ', encPayload)
     const res = await fetch("/api/interview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -246,6 +320,9 @@ export default function InterviewPage() {
     });
     const encOut = await res.json();
     const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
+
+    // [SYNC] prepare audio before showing text
+    const preparedUrl = await prepareTTS(data.reply);
 
     const assistantMsg = { role: "assistant" as const, content: data.reply };
     setHistory([...newHistory, assistantMsg]);
@@ -262,7 +339,13 @@ export default function InterviewPage() {
       return;
     }
 
-    speak(data.reply, () => micOn && startListening());
+    requestAnimationFrame(() => {
+      if (preparedUrl) {
+        void playTTS(preparedUrl, () => micOn && startListening());
+      } else {
+        if (micOn) startListening();
+      }
+    });
   };
 
   const sendSilenceSystemEvent = async () => {
@@ -280,7 +363,6 @@ export default function InterviewPage() {
       setLoading(true);
       const prompt = getPromptsForInterview(technology, allowedMinutes, company, level);
       const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
-      console.log('encPayload :: ', encPayload)
       const res = await fetch("/api/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -288,6 +370,9 @@ export default function InterviewPage() {
       });
       const encOut = await res.json();
       const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
+
+      // [SYNC] prepare audio before rendering text
+      const preparedUrl = await prepareTTS(data.reply);
 
       const assistantMsg = { role: "assistant" as const, content: data.reply };
       setHistory([...newHistory, assistantMsg]);
@@ -297,21 +382,36 @@ export default function InterviewPage() {
       lastAgentActivityRef.current = Date.now();
       silenceTriggeredRef.current = true; // do not re-trigger until user/AI acts
       setLoading(false);
-      speak(data.reply, () => micOn && startListening());
+
+      requestAnimationFrame(() => {
+        if (preparedUrl) {
+          void playTTS(preparedUrl, () => micOn && startListening());
+        } else {
+          if (micOn) startListening();
+        }
+      });
     } catch (e) {
       console.error("[SILENCE_EVENT_ERROR]", e);
       setLoading(false);
     }
   };
 
-
-  const assistantPush = (text: string) => {
+  // [SYNC] make async so we can await TTS prep
+  const assistantPush = async (text: string) => {
     const msg = { role: "assistant" as const, content: text };
     setHistory((h) => [...h, msg]);
     setAiReply(text);
     lastAgentActivityRef.current = Date.now();
     silenceTriggeredRef.current = false;
-    speak(text, () => micOn && startListening());
+
+    const url = await prepareTTS(text); // [SYNC]
+    requestAnimationFrame(() => {
+      if (url) {
+        void playTTS(url, () => micOn && startListening());
+      } else {
+        if (micOn) startListening();
+      }
+    });
   };
 
   // Proactive loop + HARD STOP at 0s
@@ -326,9 +426,6 @@ export default function InterviewPage() {
 
       // Single, bullet-proof stop condition
       if (secsLeft <= 0 && !endedRef.current) {
-        // endedRef.current = true;              // gate re-entry immediately
-        // setEnded(true);
-        // No TTS here; just end + redirect
         void handleEndInterview({ auto: true });
         return;
       }
@@ -337,11 +434,11 @@ export default function InterviewPage() {
       for (const warn of TIME_WARNINGS_S) {
         if (safeSecsLeft <= warn && !warnedAtSecondsRef.current.has(warn)) {
           warnedAtSecondsRef.current.add(warn);
-          assistantPush(
+          void assistantPush(
             warn >= 120
               ? `Time check: about ${Math.round(warn / 60)} minutes left.`
               : "About 1 minute left—try to finalize your approach."
-          );
+          ); // [SYNC] now async, but we don't need to await
         }
       }
 
@@ -365,18 +462,6 @@ export default function InterviewPage() {
 
     return () => clearInterval(tick);
   }, [stage, micOn]);
-
-
-  // const makeNudge = (st: Stage): string => {
-  //   switch (st) {
-  //     case "intro": return "Ready when you are—give me a brief intro and we’ll jump into code.";
-  //     case "clarify": return "Feel free to ask specifics—input format, constraints, or tricky edge cases.";
-  //     case "coding": return "How’s it going? Want a hint, a quick test case, or to discuss complexity?";
-  //     case "review": return "Let’s cover complexity and edge cases next. Ready?";
-  //     case "wrapup": return "Any last questions before we wrap?";
-  //     default: return "All good on your side?";
-  //   }
-  // };
 
   useEffect(() => {
     if (activeView === "editor" && stage === "clarify") setStage("coding");
@@ -407,7 +492,7 @@ export default function InterviewPage() {
     endAtRef.current = undefined;
 
     // Stop all audio/video immediately
-    try { window.speechSynthesis.cancel(); } catch { }
+    cancelTTS(); // [TTS]
     try { SpeechRecognition.stopListening(); } catch { }
 
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -451,7 +536,7 @@ export default function InterviewPage() {
         }
 
         // Persist interview completion + feedback
-        const encPayloadSummary = await encrypt({ sessionId, feedback, ...(typeof modelPrepPercent === 'number' ? {modelPreparationPercent: modelPrepPercent} : {}) },ENC_KEY)
+        const encPayloadSummary = await encrypt({ sessionId, feedback, ...(typeof modelPrepPercent === 'number' ? { modelPreparationPercent: modelPrepPercent } : {}) }, ENC_KEY)
         await fetch("/api/update-interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -463,12 +548,10 @@ export default function InterviewPage() {
       // We still redirect even if saving fails.
     } finally {
       setEndLoading(false);
-      // ⬇️ Redirect to HOME (change "/" if your home route differs)
       const sessionId = searchParams.get("sessionId") ?? "";
       router.replace(`/interview/feedback?sessionId=${encodeURIComponent(sessionId)}`);
     }
   };
-
 
   const handleCodeSubmit = async () => {
     if (endedRef.current) return;
@@ -489,6 +572,9 @@ export default function InterviewPage() {
     const encOut = await res.json();
     const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
 
+    // [SYNC] prepare audio first
+    const preparedUrl = await prepareTTS(data.reply);
+
     const assistantMsg = { role: "assistant" as const, content: data.reply };
     setHistory([...newHistory, assistantMsg]);
     setAiReply(data.reply);
@@ -504,11 +590,21 @@ export default function InterviewPage() {
       return;
     }
 
-    speak(data.reply, () => {
-      setTimeout(() => {
-        assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
-      }, 1200);
-      startListening();
+    // [SYNC] play then queue your follow-up nudge
+    requestAnimationFrame(() => {
+      if (preparedUrl) {
+        void playTTS(preparedUrl, async () => {
+          // setTimeout(() => {
+          //   void assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
+          // }, 1200);
+          startListening();
+        });
+      } else {
+        // setTimeout(() => {
+        //   void assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
+        // }, 1200);
+        startListening();
+      }
     });
   };
 
@@ -687,7 +783,7 @@ export default function InterviewPage() {
                       setActiveView("question");
                       markActivity();
                     }}
-                    className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
+                    className={`cursor-pointer flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
                               ${activeView === "question"
                         ? "text-emerald-300"
                         : "text-gray-400 hover:text-gray-100"}`}
@@ -704,7 +800,7 @@ export default function InterviewPage() {
                       if (stage === "clarify") setStage("coding");
                       markActivity();
                     }}
-                    className={`flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
+                    className={`cursor-pointer flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
                               ${activeView === "editor"
                         ? "text-emerald-300"
                         : "text-gray-400 hover:text-gray-100"}`}
@@ -741,15 +837,27 @@ export default function InterviewPage() {
 
                   {activeView === "editor" && (
                     <div className="flex flex-col h-full">
-                      <div className="relative rounded-xl overflow-hidden">
-                        <div className=" pointer-events-none absolute -inset-[1px] rounded-xl" />
-                        <textarea
-                          placeholder="// Your code goes here…"
-                          className="flex-1 w-full bg-black/40 border border-gray-800 rounded-xl p-4 font-mono text-sm text-gray-200
-                                   focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none transition min-h-[260px]"
+                      <div className="relative rounded-xl overflow-hidden border border-gray-800 bg-black/40">
+                        <MonacoEditor
+                          height="320px"                     // [MONACO] choose a stable height
+                          language={language}                 // [MONACO] auto from `technology`
+                          theme="vs-dark"
                           value={userCode}
-                          onChange={(e) => {
-                            setUserCode(e.target.value);
+                          options={{
+                            minimap: { enabled: false },
+                            fontSize: 14,
+                            fontLigatures: true,
+                            smoothScrolling: true,
+                            scrollBeyondLastLine: false,
+                            renderWhitespace: "selection",
+                            automaticLayout: true,           // [MONACO] respond to container resize
+                            lineNumbers: "on",
+                            wordWrap: "on",
+                            tabSize: 2,
+                          }}
+                          onMount={handleEditorMount}         // [MONACO] add Cmd/Ctrl+Enter
+                          onChange={(val) => {
+                            setUserCode(val ?? "");
                             markActivity();
                           }}
                         />
@@ -757,7 +865,7 @@ export default function InterviewPage() {
                       <button
                         onClick={handleCodeSubmit}
                         disabled={ended}
-                        className="mt-4 self-end inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
+                        className="cursor-pointer mt-4 self-end inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
                                  bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-500
                                  hover:from-emerald-500 hover:via-green-500 hover:to-emerald-400
                                  font-semibold text-white transition disabled:opacity-50"
@@ -781,6 +889,4 @@ export default function InterviewPage() {
       </SignedOut>
     </>
   );
-
-
 }

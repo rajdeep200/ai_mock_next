@@ -2,9 +2,28 @@
 import type { Metadata } from "next";
 import ContactForm from "./ContactForm";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.mockqube.com";
+const CANONICAL = `${SITE_URL}/contact-us`;
 export const metadata: Metadata = {
-    title: "Contact | MockQube",
-    description: "Get in touch with the MockQube team.",
+    title: "Contact Us – MockQube",
+    description:
+        "Contact the MockQube team for support, feedback, partnerships, or press. We usually respond within 1–2 business days.",
+    alternates: { canonical: CANONICAL },
+    openGraph: {
+        url: CANONICAL,
+        type: "website",
+        title: "Contact MockQube",
+        description:
+            "Questions about AI DSA mock interviews, pricing, or partnerships? Contact us.",
+        images: [{ url: "/mockqubelogo.png", width: 1200, height: 630 }],
+        siteName: "MockQube",
+    },
+    twitter: {
+        card: "summary_large_image",
+        title: "Contact MockQube",
+        description: "Support, partnerships, and general queries.",
+        images: ["/mockqubelogo.png"],
+    },
 };
 
 export default function ContactPage() {

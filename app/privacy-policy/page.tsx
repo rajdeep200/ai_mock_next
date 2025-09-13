@@ -1,6 +1,32 @@
 // app/privacy/page.tsx
 "use client"
 import React from "react";
+import type { Metadata } from "next";
+import { META_KEYWORDS } from "@/lib/constant";
+
+const CANONICAL = "https://www.mockqube.com/privacy-policy";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy - MockQube",
+  description:
+    "Read MockQube's Privacy Policy: how we collect, use, and protect your data while you practice interviews.",
+  alternates: { canonical: CANONICAL },
+  openGraph: {
+    url: CANONICAL,
+    title: "Privacy Policy - MockQube",
+    description:
+      "Information on data collection, usage, retention, and your rights.",
+    images: [{ url: "/mockqubelogo.png" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Privacy Policy - MockQube",
+    description:
+      "Our commitment to your privacy and data protection.",
+    images: ["/mockqubelogo.png"],
+  },
+  keywords: META_KEYWORDS
+};
 
 export default function PrivacyPolicy() {
     return (

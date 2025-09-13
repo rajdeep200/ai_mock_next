@@ -1,35 +1,27 @@
 // app/about/page.tsx
+import { META_KEYWORDS } from "@/lib/constant";
 import type { Metadata } from "next";
+const CANONICAL = "https://www.mockqube.com/about";
 
 export const metadata: Metadata = {
     title: "About MockQube | Your 24/7 AI Coding Interviewer",
     description:
-        "MockQube helps students and junior engineers ace DSA coding interviews with realistic AI mock interviews, instant feedback on code and communication, and a clear plan to improve.",
-    keywords: [
-        "AI mock interview",
-        "DSA mock interviews",
-        "coding interview practice",
-        "technical interview preparation",
-        "time complexity feedback",
-        "data structures and algorithms",
-        "junior developer interview prep",
-        "FAANG interview prep"
-    ],
+        "MockQube's mission: make DSA interview practice accessible with AI—timed rounds, hints, and instant feedback.",
+    keywords: META_KEYWORDS,
+    alternates: { canonical: CANONICAL },
     openGraph: {
-        title: "About MockQube | Your 24/7 AI Coding Interviewer",
+        url: CANONICAL,
+        title: "Why MockQube",
         description:
-            "Practice like it’s the real thing. MockQube simulates a human interviewer, evaluates your code and clarity, and turns every session into a growth plan.",
-        url: "https://www.mockqube.com/about",
-        siteName: "MockQube",
-        images: [{ url: "/og.png", width: 1200, height: 630, alt: "MockQube" }],
-        type: "website",
+            "MockQube's mission: make DSA interview practice accessible with AI—timed rounds, hints, and instant feedback.",
+        images: [{ url: "/mockqubelogo.png" }],
     },
     twitter: {
         card: "summary_large_image",
-        title: "About MockQube | Your 24/7 AI Coding Interviewer",
+        title: "Why MockQube",
         description:
-            "Realistic AI mock interviews for DSA — voice + code + instant, actionable feedback.",
-        images: ["/og.png"],
+            "AI-powered mock interviews that feel like the real thing.",
+        images: ["/mockqubelogo.png"],
     },
 };
 

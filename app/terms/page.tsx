@@ -2,6 +2,33 @@
 "use client"
 import React from "react";
 
+import type { Metadata } from "next";
+import { META_KEYWORDS } from "@/lib/constant";
+
+const CANONICAL = "https://www.mockqube.com/terms";
+
+export const metadata: Metadata = {
+  title: "Terms of Service – MockQube",
+  description:
+    "MockQube Terms of Service: user responsibilities, acceptable use, subscriptions, and limitations.",
+  alternates: { canonical: CANONICAL },
+  openGraph: {
+    url: CANONICAL,
+    title: "Terms of Service – MockQube",
+    description:
+      "Please review our terms before using MockQube’s services.",
+    images: [{ url: "/mockqubelogo.png" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Terms of Service – MockQube",
+    description:
+      "The terms that govern your use of MockQube.",
+    images: ["/mockqubelogo.png"],
+  },
+  keywords: META_KEYWORDS
+};
+
 export default function TermsOfService() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 text-gray-200">

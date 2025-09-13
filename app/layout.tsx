@@ -37,6 +37,14 @@ export const metadata: Metadata = {
     description:
       "Ace your coding interviews with MockQube — the AI-powered mock interview partner for students and junior engineers. Practice DSA problems, get instant feedback on your code and communication, and walk into real interviews with confidence.",
     siteName: "MockQube",
+    images: [
+      {
+        url: "/mockqubelogo.png",
+        width: 256,
+        height: 256,
+        alt: "MockQube logo",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
@@ -48,6 +56,8 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: "/mockqubelogo.png",
+    shortcut: "/mockqubelogo.png",
+    apple: "/mockqubelogo.png",
   },
   applicationName: "MockQube",
   keywords: META_KEYWORDS

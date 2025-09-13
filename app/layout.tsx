@@ -4,11 +4,13 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "@/component/Header";
 import RegisterUser from "@/component/RegisterUser";
-import Footer from "@/component/Footer"; // ← add this
+import Footer from "@/component/Footer";
 import { Analytics } from '@vercel/analytics/next';
 import { META_KEYWORDS } from "@/lib/constant";
 
-const siteUrl = "https://mockqube.com";
+const siteUrl = "https://www.mockqube.com";
+const logo = "/mockqubelogo.png";
+const ogImage = logo;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,6 +23,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: "MockQube.com | Your 24/7 AI Interviewer",
     template: "%s | MockQube.com",
@@ -37,14 +40,7 @@ export const metadata: Metadata = {
     description:
       "Ace your coding interviews with MockQube — the AI-powered mock interview partner for students and junior engineers. Practice DSA problems, get instant feedback on your code and communication, and walk into real interviews with confidence.",
     siteName: "MockQube",
-    images: [
-      {
-        url: "/favicon.ico",
-        width: 256,
-        height: 256,
-        alt: "MockQube logo",
-      },
-    ],
+    images: [{ url: ogImage, width: 1200, height: 630, alt: "MockQube" }]
   },
   twitter: {
     card: "summary_large_image",
@@ -52,12 +48,13 @@ export const metadata: Metadata = {
     creator: "@mockqube",
     title: "MockQube.com | Your 24/7 AI Interviewer",
     description:
-      "Practice tech interviews with AI: coding/DSA, system design, behavioral."
+      "Practice tech interviews with AI: coding/DSA, system design, behavioral.",
+    images: [ogImage],
   },
   icons: {
     icon: "/favicon.ico",
     shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
+    apple: logo,
   },
   applicationName: "MockQube",
   keywords: META_KEYWORDS
@@ -91,10 +88,10 @@ export default function RootLayout({
               __html: JSON.stringify({
                 "@context": "https://schema.org",
                 "@type": "Organization",
-                "name": "MockQube",
-                "url": "https://mockqube.com",
-                "logo": "https://mockqube.com/favicon.ico",
-                "sameAs": [
+                name: "MockQube",
+                url: siteUrl,
+                logo: `${siteUrl}${logo}`,
+                sameAs: [
                   "https://x.com/mockqube",
                   "https://www.linkedin.com/company/mockqube",
                   "https://github.com/mockqube"
@@ -109,19 +106,18 @@ export default function RootLayout({
               __html: JSON.stringify({
                 "@context": "https://schema.org",
                 "@type": "SoftwareApplication",
-                "name": "MockQube",
-                "applicationCategory": "EducationalApplication",
-                "operatingSystem": "Web",
-                "offers": {
-                  "@type": "Offer",
-                  "price": "0",
-                  "priceCurrency": "USD"
-                },
-                "description":
-                  "Ace your coding interviews with MockQube — the AI-powered mock interview partner for students and junior engineers. Practice DSA problems, get instant feedback on your code and communication, and walk into real interviews with confidence."
+                name: "MockQube",
+                applicationCategory: "EducationalApplication",
+                operatingSystem: "Web",
+                url: siteUrl,
+                image: `${siteUrl}${logo}`,
+                offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+                description:
+                  "Ace your coding interviews with MockQube — the AI-powered mock interview partner for students and junior engineers."
               })
             }}
           />
+
 
         </body>
       </html>

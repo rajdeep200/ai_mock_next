@@ -1,5 +1,4 @@
 // app/terms-of-service/page.tsx
-"use client"
 import React from "react";
 
 import type { Metadata } from "next";

@@ -1,5 +1,4 @@
 // app/privacy/page.tsx
-"use client"
 import React from "react";
 import type { Metadata } from "next";
 import { META_KEYWORDS } from "@/lib/constant";

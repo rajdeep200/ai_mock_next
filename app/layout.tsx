@@ -6,6 +6,7 @@ import Header from "@/component/Header";
 import RegisterUser from "@/component/RegisterUser";
 import Footer from "@/component/Footer"; // ← add this
 import { Analytics } from '@vercel/analytics/next';
+import { META_KEYWORDS } from "@/lib/constant";
 
 const siteUrl = "https://mockqube.com";
 
@@ -48,6 +49,8 @@ export const metadata: Metadata = {
   icons: {
     icon: "/mockqubelogo.png",
   },
+  applicationName: "MockQube",
+  keywords: META_KEYWORDS
 };
 
 export default function RootLayout({

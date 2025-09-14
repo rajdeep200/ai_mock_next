@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import createMDX from '@next/mdx'
+
+const withMdx = createMDX({
+  extension: /\.mdx?$/,
+})
 
 const nextConfig: NextConfig = {
   compiler: {
@@ -9,6 +14,7 @@ const nextConfig: NextConfig = {
         ? { exclude: ["error", "warn"] }
         : false,
   },
-};
+  pageExtensions: ["ts", "tsx", "md", "mdx"],
+} satisfies NextConfig;
 
-export default nextConfig;
+export default withMdx(nextConfig);

@@ -13,6 +13,7 @@
     "@cashfreepayments/cashfree-js": "^1.0.5",
     "@clerk/nextjs": "^6.23.0",
     "@monaco-editor/react": "^4.7.0",
+    "@next/mdx": "^15.5.3",
     "@supabase/supabase-js": "^2.50.2",
     "@vercel/analytics": "^1.5.0",
     "axios": "^1.11.0",

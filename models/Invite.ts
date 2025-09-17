@@ -56,7 +56,7 @@ const InviteSchema = new Schema<InviteDocs, InviteModel>({
     notes: { type: String, default: null },
 }, { timestamps: true })
 
-InviteSchema.index({tokenHash: 1}, {unique: true})
+// InviteSchema.index({tokenHash: 1}, {unique: true})
 InviteSchema.index({ status: 1, expiresAt: 1 });
 InviteSchema.index({ campaign: 1, status: 1 });
 

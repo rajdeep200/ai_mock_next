@@ -38,17 +38,11 @@ export default function Footer() {
 
           {/* Nav */}
           <nav className="flex flex-wrap justify-center gap-6 text-sm">
-            {/* [SEO-IL] ensure homepage link exists everywhere */}
             <FooterLink href="/" rel="home">Home</FooterLink>
-            {/* [SEO-IL] key journeys */}
-            {/* <FooterLink href="/start-interview">Start Interview</FooterLink> */}
             <FooterLink href="/pricing">Pricing</FooterLink>
             <FooterLink href="/about">About Us</FooterLink>
-            {/* <FooterLink href="/blog">Blog</FooterLink> */}
-            {/* [SEO-IL] fix slugs to match your actual pages */}
             <FooterLink href="/terms-of-service">Terms of Service</FooterLink>
             <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
-            {/* Keep if you have a page */}
             <FooterLink href="/contact">Contact</FooterLink>
           </nav>
         </div>

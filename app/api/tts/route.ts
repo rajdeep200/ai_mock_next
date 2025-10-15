@@ -4,12 +4,11 @@ import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
 import { auth } from "@clerk/nextjs/server";
 import { Readable } from "node:stream";
 
-export const runtime = "nodejs"; // ✅ Polly needs Node runtime (not edge)
+export const runtime = "nodejs";
 
 // Reuse client across invocations
 const polly = new PollyClient({
   region: process.env.AWS_REGION || "ap-south-1",
-  // creds are read from env on Vercel: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
 });
 
 type Body = {
@@ -17,12 +16,11 @@ type Body = {
   ssml?: string;      // optional SSML (mutually exclusive with text)
   voiceId?: string;   // e.g., "Raveena", "Joanna", "Matthew"
   engine?: "neural" | "standard";
-  rate?: "slow" | "medium" | "fast"; // only used when we wrap text into SSML
+  rate?: "slow" | "medium" | "fast";
 };
 
-const MAX_CHARS = 2800; // keep below Polly’s ~3000 char limit (safe margin)
+const MAX_CHARS = 2800;
 
-// Tiny helper: wrap plain text into SSML with optional prosody
 function toSSML({ text, ssml, rate }: { text?: string; ssml?: string; rate?: Body["rate"] }) {
   if (ssml) return ssml.trim();
   const safe = (text || "").trim();
@@ -36,8 +34,7 @@ function toSSML({ text, ssml, rate }: { text?: string; ssml?: string; rate?: Bod
 }
 
 export async function POST(req: NextRequest) {
-  // 🔐 Gate behind auth (optional—remove if you want public TTS)
-  const { userId } = await auth(); // Clerk is sync here
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: Body;
@@ -54,11 +51,11 @@ export async function POST(req: NextRequest) {
   }
 
   const voiceId = body.voiceId || process.env.POLLY_DEFAULT_VOICE || "Raveena";
-  const engine = body.engine || "neural"; // better quality if available
+  const engine = body.engine || "neural";
 
   const cmd = new SynthesizeSpeechCommand({
     Text: ssml,
-    TextType: "ssml",      // ✅ we always send SSML now (even when user gave plain text)
+    TextType: "ssml",
     VoiceId: "Matthew",
     Engine: engine,
     OutputFormat: "mp3",
@@ -70,8 +67,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No audio stream" }, { status: 502 });
     }
 
-    // Polly v3 returns a Node Readable (Buffer stream). Convert → Web stream for NextResponse
-    // Node 18+: Readable.toWeb is available.
     const nodeReadable = out.AudioStream as unknown as Readable;
     const webStream = Readable.toWeb(nodeReadable) as unknown as ReadableStream;
 
@@ -79,13 +74,11 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store", // or "public, max-age=600" if you want client cache
+        "Cache-Control": "no-store"
       },
     });
   } catch (err: any) {
-    // Log minimal info (avoid leaking text)
     console.error("[POLLY] TTS error:", err?.name || err?.message || err);
-    // Fallback: you could return a tiny error beep mp3 here
     return NextResponse.json({ error: "TTS failed" }, { status: 500 });
   }
 }

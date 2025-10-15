@@ -47,7 +47,7 @@ export default function Footer() {
             {/* <FooterLink href="/blog">Blog</FooterLink> */}
             {/* [SEO-IL] fix slugs to match your actual pages */}
             <FooterLink href="/terms-of-service">Terms of Service</FooterLink>
-            <FooterLink href="/privacy">Privacy Policy</FooterLink>
+            <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
             {/* Keep if you have a page */}
             <FooterLink href="/contact">Contact</FooterLink>
           </nav>

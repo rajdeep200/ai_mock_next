@@ -1,6 +1,11 @@
 // app/api/tts/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { PollyClient, SynthesizeSpeechCommand } from "@aws-sdk/client-polly";
+import {
+  PollyClient,
+  SynthesizeSpeechCommand,
+  type VoiceId,      // ✅ ADDED
+  type Engine,       // ✅ ADDED
+} from "@aws-sdk/client-polly";
 import { auth } from "@clerk/nextjs/server";
 import { Readable } from "node:stream";
 
@@ -8,7 +13,7 @@ export const runtime = "nodejs";
 
 // Reuse client across invocations
 const polly = new PollyClient({
-  region: process.env.AWS_REGION || "ap-south-1",
+  region: process.env.AWS_REGION || "us-east-1"
 });
 
 type Body = {
@@ -17,6 +22,7 @@ type Body = {
   voiceId?: string;   // e.g., "Raveena", "Joanna", "Matthew"
   engine?: "neural" | "standard";
   rate?: "slow" | "medium" | "fast";
+  langHint?: "en-IN" | "en-US"; // optional, helps pick a fallback
 };
 
 const MAX_CHARS = 2800;
@@ -31,6 +37,22 @@ function toSSML({ text, ssml, rate }: { text?: string; ssml?: string; rate?: Bod
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
   return `<speak><prosody rate="${r}">${escaped}</prosody></speak>`;
+}
+
+const ALLOWED_VOICES = new Set<VoiceId>([
+  "Matthew", "Joanna", "Justin", "Ivy", "Salli", "Kendra", "Kimberly", // en-US
+  "Raveena", "Aditi", "Kajal",                                        // en-IN
+]);
+
+function pickVoiceId(raw: string | undefined, langHint?: string): VoiceId {
+  const fallback = langHint === "en-IN" ? "Raveena" : "Matthew";
+  const candidate = (raw || process.env.POLLY_DEFAULT_VOICE || fallback) as VoiceId;
+  return ALLOWED_VOICES.has(candidate) ? candidate : fallback as VoiceId;
+}
+
+function pickEngine(raw: Body["engine"] | undefined): Engine {
+  const e = (raw || process.env.POLLY_ENGINE || "neural") as Engine;
+  return e === "neural" || e === "standard" ? e : "neural";
 }
 
 export async function POST(req: NextRequest) {
@@ -50,13 +72,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Text too long (>${MAX_CHARS} chars)` }, { status: 413 });
   }
 
-  const voiceId = body.voiceId || process.env.POLLY_DEFAULT_VOICE || "Raveena";
-  const engine = body.engine || "neural";
+  const voiceId = pickVoiceId(body.voiceId, body.langHint);  // <<-- VoiceId
+  const engine = 'standard';                   // <<-- Engine
 
   const cmd = new SynthesizeSpeechCommand({
     Text: ssml,
     TextType: "ssml",
-    VoiceId: "Matthew",
+    VoiceId: voiceId,
     Engine: engine,
     OutputFormat: "mp3",
   });
@@ -74,11 +96,12 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store"
+        "Cache-Control": "no-store",
       },
     });
   } catch (err: any) {
-    console.error("[POLLY] TTS error:", err?.name || err?.message || err);
+    // If you ever see AccessDenied again, it's IAM/region—not API code.
+    console.error("[POLLY] TTS error:", err || err?.name || err?.message);
     return NextResponse.json({ error: "TTS failed" }, { status: 500 });
   }
 }

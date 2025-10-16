@@ -245,6 +245,59 @@ export function useInterviewEngine(technology: string, company: string, level: s
         });
     }
 
+    async function handleCodeSubmit() {
+        if (endedRef.current) return;
+        if (!userCode.trim()) return;
+        setLoading(true);
+        setStage("review"); // optional, since you track stages
+        const userMsg = { role: "user" as const, content: `Here is my code:\n${userCode.trim()}` };
+        const newHistory = [...history, userMsg];
+
+        const prompt = getPromptsForInterview(
+            technology,
+            allowedMinutes ?? requestedDuration,
+            company,
+            level
+        );
+
+        const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY);
+        const res = await fetch("/api/interview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(encPayload),
+        });
+        const encOut = await res.json();
+        const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
+
+        // prep TTS first so UI + audio feel simultaneous
+        const url = await prepareTTS(data.reply);
+
+        const assistantMsg = { role: "assistant" as const, content: data.reply };
+        setHistory([...newHistory, assistantMsg]);
+        setAiReply(data.reply);
+        lastAgentActivityRef.current = Date.now();
+        silenceTriggeredRef.current = false;
+        setLoading(false);
+        setActiveView("question");
+        markActivity();
+
+        if (containsEndToken(data.reply)) {
+            await handleEndInterview({ auto: true });
+            return;
+        }
+
+        // play TTS, then reopen mic
+        requestAnimationFrame(() => {
+            if (url) void playTTS(url, () => micOn && startListening());
+            else if (micOn) startListening();
+        });
+
+        // optional follow-up nudge after code review
+        // setTimeout(() => {
+        //   void assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
+        // }, 1200);
+    }
+
     async function sendSilenceSystemEvent() {
         if (endedRef.current || loading) return;
         try {
@@ -378,6 +431,6 @@ export function useInterviewEngine(technology: string, company: string, level: s
         // setters for UI
         setActiveView, setUserCode, setCameraOn,
         // actions
-        toggleMic, sendMessage, assistantPush, handleEndInterview,
+        toggleMic, sendMessage, assistantPush, handleEndInterview, handleCodeSubmit
     };
 }

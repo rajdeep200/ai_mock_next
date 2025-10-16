@@ -8,19 +8,23 @@ import LeftPane from "@/component/interview/LeftPane";
 import RightPane from "@/component/interview/RightPane";
 import MonacoEditorPane from "@/component/interview/MonacoEditorPane";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useSpeechRecognition } from "react-speech-recognition";
 
 export default function InterviewPage() {
+  const [liveTranscript, setLiveTranscript] = useState("");
   const searchParams = useSearchParams();
   const technology = searchParams.get("technology") ?? "React";
   const company = searchParams.get("company") ?? "";
   const level = searchParams.get("level") ?? "Junior";
+  const { transcript } =
+  useSpeechRecognition();
 
-  // 🔑 all logic & state lives in the hook now
   const {
-    aiReply, history, loading, endLoading, micOn, cameraOn, stage, activeView, userCode, ended,
+    aiReply, loading, endLoading, micOn, cameraOn, stage, activeView, userCode, ended,
     timeLeft, allowedMinutes, planMax, wasClamped,
     setActiveView, setUserCode, setCameraOn,
-    toggleMic, handleEndInterview,
+    toggleMic, handleEndInterview, handleCodeSubmit
   } = useInterviewEngine(technology, company, level);
 
   const language = (() => {
@@ -33,11 +37,14 @@ export default function InterviewPage() {
     return "javascript";
   })();
 
+  useEffect(() => {
+    setLiveTranscript(transcript);
+  }, [transcript]);
+
   return (
     <>
       <SignedIn>
         <main className="relative min-h-screen bg-black text-white flex flex-col overflow-hidden">
-          {/* Ambient BG (unchanged; keep your styles) */}
           <div aria-hidden className="pointer-events-none absolute inset-0">
             <div className="absolute inset-0">
               <div className="animate-float-slow absolute top-[-40px] left-[10%] h-72 w-72 rounded-full bg-emerald-500/10 blur-2xl" />
@@ -60,15 +67,14 @@ export default function InterviewPage() {
 
           {/* Main grid */}
           <section className="relative z-10 flex-1 px-4 sm:px-6 py-5">
-            <div className="mx-auto grid w-full max-w-6xl gap-6 lg:gap-7 lg:grid-cols-2">
+            <div className="mx-auto grid w-full gap-6 lg:gap-7 lg:grid-cols-2">
               <LeftPane
                 cameraOn={cameraOn}
                 setCameraOn={setCameraOn}
                 micOn={micOn}
                 toggleMic={toggleMic}
                 ended={ended}
-                // For transcript display ONLY; the hook handles converting it to messages.
-                transcript={(typeof window !== "undefined" && (window as any).webkitSpeechRecognition) ? "" : ""}
+                transcript={liveTranscript}
               />
 
               <RightPane
@@ -85,7 +91,7 @@ export default function InterviewPage() {
                     language={language}
                     value={userCode}
                     onChange={setUserCode}
-                    onSubmit={() => { } /* wire to a handler if you want immediate grading */}
+                    onSubmit={handleCodeSubmit}
                     disabled={ended}
                   />
                 }

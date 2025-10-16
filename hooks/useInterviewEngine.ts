@@ -22,6 +22,7 @@ export function useInterviewEngine(technology: string, company: string, level: s
     const searchParams = useSearchParams();
     const { isSignedIn } = useAuth();
     const { transcript, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
+    const [displayTranscript, setDisplayTranscript] = useState<string>("");
 
     // --- UI state exposed back to the page ---
     const [aiReply, setAiReply] = useState("");
@@ -70,6 +71,7 @@ export function useInterviewEngine(technology: string, company: string, level: s
     // --- transcript watcher: convert to user message ---
     useEffect(() => {
         if (!transcript.trim()) return;
+        setDisplayTranscript(transcript)
         cancelTTS(); // stop AI voice if user starts speaking
         const t = setTimeout(() => {
             const spoken = transcript.trim();
@@ -431,6 +433,6 @@ export function useInterviewEngine(technology: string, company: string, level: s
         // setters for UI
         setActiveView, setUserCode, setCameraOn,
         // actions
-        toggleMic, sendMessage, assistantPush, handleEndInterview, handleCodeSubmit
+        toggleMic, sendMessage, assistantPush, handleEndInterview, handleCodeSubmit, displayTranscript
     };
 }

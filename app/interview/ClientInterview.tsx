@@ -8,23 +8,18 @@ import LeftPane from "@/component/interview/LeftPane";
 import RightPane from "@/component/interview/RightPane";
 import MonacoEditorPane from "@/component/interview/MonacoEditorPane";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { useSpeechRecognition } from "react-speech-recognition";
 
 export default function InterviewPage() {
-  const [liveTranscript, setLiveTranscript] = useState("");
   const searchParams = useSearchParams();
   const technology = searchParams.get("technology") ?? "React";
   const company = searchParams.get("company") ?? "";
   const level = searchParams.get("level") ?? "Junior";
-  const { transcript } =
-  useSpeechRecognition();
 
   const {
     aiReply, loading, endLoading, micOn, cameraOn, stage, activeView, userCode, ended,
     timeLeft, allowedMinutes, planMax, wasClamped,
     setActiveView, setUserCode, setCameraOn,
-    toggleMic, handleEndInterview, handleCodeSubmit
+    toggleMic, handleEndInterview, handleCodeSubmit, displayTranscript
   } = useInterviewEngine(technology, company, level);
 
   const language = (() => {
@@ -36,10 +31,6 @@ export default function InterviewPage() {
     if (tech.includes("ts")) return "typescript";
     return "javascript";
   })();
-
-  useEffect(() => {
-    setLiveTranscript(transcript);
-  }, [transcript]);
 
   return (
     <>
@@ -74,7 +65,7 @@ export default function InterviewPage() {
                 micOn={micOn}
                 toggleMic={toggleMic}
                 ended={ended}
-                transcript={liveTranscript}
+                transcript={displayTranscript}
               />
 
               <RightPane

@@ -120,10 +120,25 @@ export default function InterviewPage() {
   // [TTS] play a prepared URL
   const playTTS = async (url: string, onEnd?: () => void) => {
     cancelTTS();
+
+    try { SpeechRecognition.stopListening(); } catch {}
     objectUrlRef.current = url;
     audioRef.current = new Audio(url);
-    audioRef.current.onended = () => { onEnd?.(); };
-    audioRef.current.onerror = () => { onEnd?.(); };
+
+    // When audio actually starts, make sure mic is off to avoid edge echoes
+    audioRef.current.onplay = () => {
+      try { SpeechRecognition.stopListening(); } catch { }
+    };
+    audioRef.current.onended = () => {
+      // Re-arm mic with a small delay (handled inside startListening)
+      startListening();
+      onEnd?.();
+    };
+    audioRef.current.onerror = () => {
+      // If audio fails, still arm the mic so user can speak
+      startListening();
+      onEnd?.();
+    };
     try {
       await audioRef.current.play();
     } catch {
@@ -227,12 +242,18 @@ export default function InterviewPage() {
     return () => clearTimeout(timeout);
   }, [transcript, resetTranscript]);
 
+  const MIC_ARM_DELAY_MS = 300; // small buffer so the engine is "ready"
+
   const startListening = () => {
     if (endedRef.current) return;
-    if (browserSupportsSpeechRecognition && micOn) {
-      resetTranscript();
-      SpeechRecognition.startListening({ continuous: true, language: "en-US" });
-    }
+    if (!browserSupportsSpeechRecognition || !micOn) return;
+    setTimeout(() => {
+      SpeechRecognition.startListening({
+        continuous: true,
+        interimResults: true,
+        language: "en-US",
+      });
+    }, MIC_ARM_DELAY_MS);
   };
 
   // Clean up

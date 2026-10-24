@@ -3,22 +3,32 @@
 import { useEffect, useRef, useState } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 import { SignedIn, SignedOut, SignInButton, useAuth } from "@clerk/nextjs";
-import {
-  FiMic, FiMicOff, FiVideo, FiVideoOff, FiX, FiMessageSquare, FiCode, FiLoader,
-} from "react-icons/fi";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import "./interview.css";
 import { getPromptsForInterview, SUMMARY_PROMPT } from "@/lib/prompts";
 import { decrypt, encrypt } from "@/lib/crypto";
 import dynamic from "next/dynamic";
 
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["300", "500", "700"],
+  variable: "--font-bricolage",
+  display: "swap",
+});
+
+const figtree = Figtree({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-figtree",
+  display: "swap",
+});
+
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-[260px] rounded-xl border border-gray-800 bg-black/40 text-gray-400">
-      Loading editor…
-    </div>
-  ),
+  loading: () => <div className="editor-load">Loading editor…</div>,
 });
 
 type Stage = "intro" | "clarify" | "coding" | "review" | "wrapup";
@@ -39,6 +49,7 @@ export default function InterviewPage() {
   const [cameraOn, setCameraOn] = useState(true);
   const [userCode, setUserCode] = useState("");
   const [ended, setEnded] = useState(false);
+  const [speaking, setSpeaking] = useState(false); // true while the interviewer's TTS audio is playing
   const endedRef = useRef(false);
 
   const [stage, setStage] = useState<Stage>("intro");
@@ -84,6 +95,7 @@ export default function InterviewPage() {
   const { transcript, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
 
   const cancelTTS = () => {
+    setSpeaking(false);
     try {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -123,18 +135,24 @@ export default function InterviewPage() {
 
     try { SpeechRecognition.stopListening(); } catch {}
     objectUrlRef.current = url;
-    audioRef.current = new Audio(url);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    // Ignore state updates from an audio element that has since been replaced or cancelled.
+    const isCurrent = () => audioRef.current === audio;
 
     // When audio actually starts, make sure mic is off to avoid edge echoes
     audioRef.current.onplay = () => {
+      if (isCurrent()) setSpeaking(true);
       try { SpeechRecognition.stopListening(); } catch { }
     };
     audioRef.current.onended = () => {
+      if (isCurrent()) setSpeaking(false);
       // Re-arm mic with a small delay (handled inside startListening)
       startListening();
       onEnd?.();
     };
     audioRef.current.onerror = () => {
+      if (isCurrent()) setSpeaking(false);
       // If audio fails, still arm the mic so user can speak
       startListening();
       onEnd?.();
@@ -629,285 +647,326 @@ export default function InterviewPage() {
     });
   };
 
+  // ---- Presentation only (no interview logic below this line) ----
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Friendly on-screen version of the 5 / 2 / 1 minute nudges.
+  useEffect(() => {
+    const msg =
+      timeLeft === 300 ? "5 minutes left. Start wrapping up your solution."
+        : timeLeft === 120 ? "2 minutes left. Finalize your approach."
+          : timeLeft === 60 ? "1 minute left. Finish up."
+            : null;
+    if (!msg) return;
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 6000);
+  }, [timeLeft]);
+
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
+
+  useEffect(() => {
+    if (!confirmEnd) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setConfirmEnd(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [confirmEnd]);
+
+  const techLabel = technology.toLowerCase() === "dsa" ? "DSA" : technology;
+  const levelLabel = level ? level.charAt(0).toUpperCase() + level.slice(1) : "";
+  const levelKey = ["easy", "medium", "hard"].includes(level.toLowerCase()) ? level.toLowerCase() : "";
+
+  const totalSecs = (allowedMinutes ?? requestedDuration) * 60;
+  const ringLeft = totalSecs ? Math.min(100, (timeLeft / totalSecs) * 100) : 100;
+  const warn = timeLeft > 0 && (timeLeft <= 60 || (timeLeft <= 300 && totalSecs > 300));
+  const clock = `${Math.floor(timeLeft / 60)}:${String(timeLeft % 60).padStart(2, "0")}`;
+
+  const ivState = loading ? "thinking" : speaking ? "speaking" : micOn ? "listening" : "muted";
+  const stepIdx = stage === "intro" ? 0 : stage === "clarify" ? 1 : 2;
+  const stepCls = (i: number) => (i < stepIdx ? "done" : i === stepIdx ? "on" : undefined);
+
+  const LANG_LABEL: Record<string, string> = { javascript: "JavaScript", typescript: "TypeScript", python: "Python", java: "Java", cpp: "C++", go: "Go" };
+  const LANG_EXT: Record<string, string> = { javascript: "js", typescript: "ts", python: "py", java: "java", cpp: "cpp", go: "go" };
+
+  const goTo = (view: "question" | "editor") => {
+    setActiveView(view);
+    if (view === "editor" && stage === "clarify") setStage("coding");
+    markActivity();
+  };
+
+  const ending = endLoading || ended;
+
   return (
-    <>
+    <div
+      className={`mqi ${bricolage.variable} ${figtree.variable}`}
+      data-iv={ivState}
+      data-mic={micOn ? "on" : "off"}
+      data-time={warn ? "warn" : "ok"}
+    >
       <SignedIn>
-        <main className="relative min-h-screen bg-black text-white flex flex-col overflow-hidden">
-          {/* ---- Ambient FX (particles + scanlines + grid) ---- */}
-          <div aria-hidden className="pointer-events-none absolute inset-0">
-            {/* particles */}
-            <div className="absolute inset-0">
-              <div className="animate-float-slow absolute top-[-40px] left-[10%] h-72 w-72 rounded-full bg-emerald-500/10 blur-2xl" />
-              <div className="animate-float-medium absolute bottom-[-60px] right-[5%] h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl" />
-              <div className="animate-float-fast absolute top-[30%] right-[30%] h-40 w-40 rounded-full bg-green-300/10 blur-2xl" />
-            </div>
-            {/* scanlines */}
-            <div className="pointer-events-none absolute inset-0 opacity-[0.08] bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[length:100%_3px]" />
-            {/* grid */}
-            <div className="absolute inset-0 opacity-40 [mask-image:radial-gradient(50%_70%_at_50%_60%,black,transparent)]">
-              <div className="h-full w-full bg-[linear-gradient(to_right,rgba(31,41,55,.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(31,41,55,.5)_1px,transparent_1px)] bg-[size:48px_48px]" />
-            </div>
+        {/* ---- Top bar ---- */}
+        <header className="bar">
+          <Link href="/home" className="logo" aria-label="MockQube">
+            <Image src="/mockqubelogo.png" alt="" width={24} height={28} priority />
+            MockQube
+          </Link>
+          <div className="chips" aria-label="Session">
+            <span className="chip">{techLabel}</span>
+            {levelLabel && <span className={`chip${levelKey ? ` lv-${levelKey}` : ""}`}>{levelLabel}</span>}
+            {company && <span className="chip">{company}</span>}
           </div>
+          <div className="sp" />
+          <span className="live"><i aria-hidden="true" /><span>{micOn ? "Recording answers" : "Mic muted"}</span></span>
+          <div className="timer" role="timer" aria-label="Time remaining">
+            <span className="ring" style={{ ["--left" as string]: ringLeft }} aria-hidden="true" />
+            <b>{clock}</b><small>left</small>
+          </div>
+          <button
+            type="button"
+            className="btn end"
+            onClick={() => setConfirmEnd(true)}
+            disabled={ending}
+            aria-label="End Interview"
+          >
+            <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            <span>{ending ? "Ending…" : "End interview"}</span>
+          </button>
+        </header>
 
-          {/* ---- Header ---- */}
-          <header className="relative z-10 w-full px-4 sm:px-6 py-3 border-b border-gray-800/70 backdrop-blur bg-black/40">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {/* Title */}
-              <div className="relative">
-                <h1 className="text-base sm:text-lg font-semibold tracking-wide">
-                  <span className="bg-gradient-to-r from-emerald-300 via-green-400 to-emerald-200 bg-clip-text text-transparent">
-                    Mock Interview
-                  </span>
-                </h1>
-                <span className="absolute -bottom-1 left-0 h-[2px] w-20 bg-gradient-to-r from-emerald-500 to-transparent" />
+        {/* ---- Notices ---- */}
+        {allowedMinutes === undefined ? (
+          <div className="notice n-prep" role="status">
+            <span className="spn" aria-hidden="true" />Preparing your interview…
+          </div>
+        ) : wasClamped ? (
+          <div className="notice n-clamp" role="status">
+            <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+            <span>
+              You asked for <b>{requestedDuration} min</b>, but your plan allows <b>{planMax}</b>. Adjusted to <b>{allowedMinutes} min</b>.{" "}
+              <Link href="/pricing">Upgrade your plan</Link> for longer sessions.
+            </span>
+          </div>
+        ) : null}
+
+        <main className="stage">
+          {/* LEFT: interviewer, you, live transcript */}
+          <section className="col" aria-label="Interviewer and you">
+            <div className="iv">
+              <div className="orb" aria-hidden="true"><i /></div>
+              <span className="who">AI interviewer</span>
+              <div className="state" aria-live="polite">
+                <span className="s-speaking">Speaking…</span>
+                <span className="s-listening">Listening to you</span>
+                <span className="s-thinking">Thinking…</span>
+                <span className="s-muted">Your mic is muted</span>
               </div>
+              <div className="wave" aria-hidden="true">
+                {Array.from({ length: 24 }, (_, i) => <i key={i} />)}
+              </div>
+            </div>
 
-              {/* Controls: timer + end */}
-              <div className="flex items-center gap-2 sm:gap-3 justify-between sm:justify-end">
-                {/* Timer pill */}
-                <span
-                  className="whitespace-nowrap inline-flex items-center gap-2 text-[11px] sm:text-xs px-2.5 py-1 rounded-full
-                   border border-emerald-500/40 bg-gray-900/70 ring-1 ring-emerald-500/20
-                   shadow-[0_0_12px_rgba(16,185,129,.22)]"
-                  title="Remaining time"
-                >
-                  <span className="hidden sm:block text-gray-300">Time</span>
-                  <span className="block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                  {`⏱ ${Math.floor(timeLeft / 60)}:${String(timeLeft % 60).padStart(2, "0")}`}
-                </span>
-
-                {/* End button */}
+            <div className="cam">
+              {cameraOn ? (
+                <video ref={videoRef} autoPlay muted playsInline />
+              ) : (
+                <div className="cam-off">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 16v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2m5 0h3a2 2 0 0 1 2 2v3l5-3v10M2 2l20 20" /></svg>
+                  Camera is off
+                </div>
+              )}
+              <span className="tag">You</span>
+              <div className="dock" role="group" aria-label="Call controls">
                 <button
-                  onClick={() => void handleEndInterview()}
-                  disabled={endLoading || ended}
-                  className={`cursor-pointer whitespace-nowrap inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] sm:text-sm font-medium
-                    transition shadow-[0_0_14px_rgba(239,68,68,.18)]
-                    ${endLoading || ended
-                      ? "cursor-not-allowed border border-gray-700/70 bg-gray-900/60 text-gray-400"
-                      : "border border-red-500/30 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white"
-                    }`}
-                  aria-label="End Interview"
+                  type="button"
+                  className={`rb${micOn ? "" : " is-off"}`}
+                  onClick={toggleMic}
+                  disabled={ended}
+                  aria-pressed={!micOn}
+                  aria-label={micOn ? "Mute microphone" : "Unmute microphone"}
+                  title={micOn ? "Mute mic" : "Unmute mic"}
                 >
-                  {endLoading ? (
-                    <FiLoader className="animate-spin" size={16} />
-                  ) : (
-                    <FiX size={16} />
-                  )}
-                  {/* Keep label hidden on very small screens to avoid wrapping */}
-                  <span className="hidden xs:inline">
-                    {endLoading ? "Ending…" : ended ? "Ended" : "End Interview"}
-                  </span>
+                  <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+                  <span className="x" />
+                </button>
+                <button
+                  type="button"
+                  className={`rb${cameraOn ? "" : " is-off"}`}
+                  onClick={() => {
+                    if (!ended) {
+                      setCameraOn(!cameraOn);
+                      markActivity();
+                    }
+                  }}
+                  disabled={ended}
+                  aria-pressed={!cameraOn}
+                  aria-label={cameraOn ? "Turn camera off" : "Turn camera on"}
+                  title={cameraOn ? "Turn camera off" : "Turn camera on"}
+                >
+                  <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
+                  <span className="x" />
                 </button>
               </div>
             </div>
-          </header>
 
-          {/* ---- Notices ---- */}
-          <div className="relative z-10 px-4 sm:px-6 pt-3">
-            {allowedMinutes === undefined ? (
-              <div className="w-full max-w-3xl mx-auto bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-gray-300 flex items-center gap-2 backdrop-blur">
-                <FiLoader className="animate-spin" /> Preparing your interview…
-              </div>
-            ) : wasClamped ? (
-              <div className="w-full max-w-3xl mx-auto bg-yellow-900/35 border border-yellow-700/70 text-yellow-200 text-sm rounded-xl px-3 py-2 backdrop-blur">
-                Requested duration was {requestedDuration}m, but your plan allows max {planMax}m.
-                Adjusted to <b>{allowedMinutes}m</b>.{" "}
-                <Link href="/pricing" className="underline text-yellow-300 hover:text-yellow-50">
-                  Upgrade your plan
-                </Link>{" "}
-                for longer sessions.
-              </div>
-            ) : null}
-          </div>
-
-          {/* ---- Main ---- */}
-          <section className="relative z-10 flex-1 px-4 sm:px-6 py-5">
-            <div className="mx-auto grid w-full gap-6 lg:gap-7 lg:grid-cols-2">
-              {/* LEFT: Camera + Controls + Transcript */}
-              <div className="flex flex-col gap-4">
-                {/* Holographic panel */}
-                <div className="relative rounded-2xl overflow-hidden">
-                  <div className="hologram-border pointer-events-none absolute -inset-[1px] rounded-2xl" />
-                  <div className="relative w-full aspect-video rounded-2xl overflow-hidden border border-emerald-500/25 bg-gray-950/70 backdrop-blur shadow-[0_0_30px_rgba(16,185,129,.18)] ring-1 ring-emerald-500/10">
-                    {cameraOn ? (
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-gray-900/70 flex items-center justify-center text-gray-400 flex-col gap-2">
-                        <FiVideoOff size={42} />
-                        <span>Camera Off</span>
-                      </div>
-                    )}
-                    {/* subtle scan overlay */}
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(16,185,129,.08)_50%,transparent_100%)] animate-scan" />
-                  </div>
-                </div>
-
-                {/* Controls */}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={toggleMic}
-                    disabled={ended}
-                    className={`h-12 w-12 rounded-xl grid place-items-center transition
-                              border border-white/10 shadow-[0_0_20px_rgba(255,255,255,.06)]
-                              ${micOn
-                        ? "bg-red-600/90 hover:bg-red-600 ring-2 ring-red-400/30"
-                        : "bg-emerald-600/90 hover:bg-emerald-600 ring-2 ring-emerald-400/30"
-                      } disabled:opacity-50`}
-                    title={micOn ? "Mute mic" : "Unmute mic"}
-                  >
-                    {micOn ? <FiMicOff size={20} /> : <FiMic size={20} />}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (!ended) {
-                        setCameraOn(!cameraOn);
-                        markActivity();
-                      }
-                    }}
-                    disabled={ended}
-                    className={`h-12 w-12 rounded-xl grid place-items-center transition
-                              border border-white/10 shadow-[0_0_20px_rgba(255,255,255,.06)]
-                              ${cameraOn
-                        ? "bg-red-600/90 hover:bg-red-600 ring-2 ring-red-400/30"
-                        : "bg-emerald-600/90 hover:bg-emerald-600 ring-2 ring-emerald-400/30"
-                      } disabled:opacity-50`}
-                    title={cameraOn ? "Turn camera off" : "Turn camera on"}
-                  >
-                    {cameraOn ? <FiVideoOff size={20} /> : <FiVideo size={20} />}
-                  </button>
-
-                  <div className="ml-auto inline-flex items-center gap-2 text-[11px] sm:text-xs px-2.5 py-1 rounded-full border border-gray-700 bg-gray-900/60 text-emerald-300">
-                    <span className="block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    Live
-                  </div>
-                </div>
-
-                {/* Transcript */}
-                <div className="w-full bg-gray-900/60 border border-gray-800 p-3 rounded-xl text-[12px] text-emerald-300 font-mono mt-1 backdrop-blur">
-                  <span className="opacity-70 mr-1">🎙️</span> {transcript || "…"}
-                </div>
-              </div>
-
-              {/* RIGHT: Q/A + Editor */}
-              <div className="flex flex-col rounded-2xl border border-emerald-500/25 bg-gray-950/70 backdrop-blur shadow-[0_0_28px_rgba(16,185,129,.15)] ring-1 ring-emerald-500/10 overflow-hidden">
-                {/* Tabs w/ neon indicator */}
-                <div className="relative flex border-b border-gray-800">
-                  <button
-                    onClick={() => {
-                      setActiveView("question");
-                      markActivity();
-                    }}
-                    className={`cursor-pointer flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
-                              ${activeView === "question"
-                        ? "text-emerald-300"
-                        : "text-gray-400 hover:text-gray-100"}`}
-                  >
-                    <span
-                      className={`absolute inset-x-0 bottom-0 h-[3px] transition-all ${activeView === "question" ? "bg-gradient-to-r from-emerald-400 via-green-400 to-emerald-400" : "bg-transparent"
-                        }`}
-                    />
-                    <FiMessageSquare /> Question
-                  </button>
-                  <button
-                    onClick={() => {
-                      setActiveView("editor");
-                      if (stage === "clarify") setStage("coding");
-                      markActivity();
-                    }}
-                    className={`cursor-pointer flex-1 p-3 text-sm font-medium flex items-center justify-center gap-2 transition-all
-                              ${activeView === "editor"
-                        ? "text-emerald-300"
-                        : "text-gray-400 hover:text-gray-100"}`}
-                  >
-                    <span
-                      className={`absolute inset-x-0 bottom-0 h-[3px] transition-all ${activeView === "editor" ? "bg-gradient-to-r from-emerald-400 via-green-400 to-emerald-400" : "bg-transparent"
-                        }`}
-                    />
-                    <FiCode /> Code Editor
-                  </button>
-                </div>
-
-                {/* Panel */}
-                <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
-                  {activeView === "question" && (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                      {loading ? (
-                        <div className="flex flex-col items-center gap-3 text-gray-400">
-                          <div className="relative">
-                            <FiLoader className="animate-spin text-emerald-400" size={28} />
-                            <span className="absolute inset-0 blur-sm opacity-40 text-emerald-400">
-                              <FiLoader className="animate-spin" size={28} />
-                            </span>
-                          </div>
-                          <span>AI is thinking…</span>
-                        </div>
-                      ) : (
-                        <p className="text-lg sm:text-xl text-emerald-200/90 leading-relaxed max-w-3xl">
-                          {aiReply}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {activeView === "editor" && (
-                    <div className="flex flex-col h-full">
-                      <div className="relative rounded-xl overflow-hidden border border-gray-800 bg-black/40">
-                        <MonacoEditor
-                          height="320px"                     // [MONACO] choose a stable height
-                          language={language}                 // [MONACO] auto from `technology`
-                          theme="vs-dark"
-                          value={userCode}
-                          options={{
-                            minimap: { enabled: false },
-                            fontSize: 14,
-                            fontLigatures: true,
-                            smoothScrolling: true,
-                            scrollBeyondLastLine: false,
-                            renderWhitespace: "selection",
-                            automaticLayout: true,           // [MONACO] respond to container resize
-                            lineNumbers: "on",
-                            wordWrap: "on",
-                            tabSize: 2,
-                          }}
-                          onMount={handleEditorMount}         // [MONACO] add Cmd/Ctrl+Enter
-                          onChange={(val) => {
-                            setUserCode(val ?? "");
-                            markActivity();
-                          }}
-                        />
-                      </div>
-                      <button
-                        onClick={handleCodeSubmit}
-                        disabled={ended}
-                        className="cursor-pointer mt-4 self-end inline-flex items-center gap-2 px-5 py-2.5 rounded-xl
-                                 bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-500
-                                 hover:from-emerald-500 hover:via-green-500 hover:to-emerald-400
-                                 font-semibold text-white transition disabled:opacity-50"
-                      >
-                        Submit Code
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+            <div className="say" aria-live="polite">
+              <small><span>You&apos;re saying</span><span className="dots" aria-hidden="true"><i /><i /><i /></span></small>
+              <p className={transcript ? undefined : "empty"}>{transcript || "…"}</p>
             </div>
           </section>
+
+          {/* RIGHT: question / editor */}
+          <section className="work" aria-label="Workspace">
+            <div className="work-h">
+              <div className="tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeView === "question"}
+                  className={`tab${activeView === "question" ? " on" : ""}`}
+                  onClick={() => goTo("question")}
+                >
+                  <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" /></svg>Question
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeView === "editor"}
+                  className={`tab${activeView === "editor" ? " on" : ""}`}
+                  onClick={() => goTo("editor")}
+                >
+                  <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14" /></svg>Code editor
+                </button>
+              </div>
+              <div className="steps" aria-label="Interview progress">
+                <span className={stepCls(0)}>Intro</span><em /><span className={stepCls(1)}>Clarify</span><em /><span className={stepCls(2)}>Code</span>
+              </div>
+            </div>
+
+            {activeView === "question" && (
+              <div className="pane pane-q" role="tabpanel">
+                <span className="q-eyebrow"><i aria-hidden="true" />Interviewer</span>
+                {loading ? (
+                  <div className="q-think" aria-live="polite">
+                    <span className="dots" aria-hidden="true"><i /><i /><i /></span>Interviewer is thinking…
+                  </div>
+                ) : aiReply ? (
+                  <p className="q-text">{aiReply}</p>
+                ) : (
+                  <p className="q-empty">Your interviewer will start in a moment…</p>
+                )}
+                <div className="q-foot">
+                  <p>Think out loud. Your answer is captured as you speak.</p>
+                  <button type="button" className="btn ghost" onClick={() => goTo("editor")}>
+                    Open the editor
+                    <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeView === "editor" && (
+              <div className="pane pane-e" role="tabpanel">
+                <div className="ed-top">
+                  <span className="chip">{LANG_LABEL[language] ?? language}</span>
+                  <span className="chip">solution.{LANG_EXT[language] ?? "txt"}</span>
+                  <span className="hint">Submit with <kbd>Ctrl</kbd> + <kbd>Enter</kbd></span>
+                </div>
+                <div className="editor">
+                  <MonacoEditor
+                    height="100%"                      // [MONACO] fills the rounded frame
+                    language={language}                 // [MONACO] auto from `technology`
+                    theme="vs-dark"
+                    value={userCode}
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 14,
+                      fontLigatures: true,
+                      smoothScrolling: true,
+                      scrollBeyondLastLine: false,
+                      renderWhitespace: "selection",
+                      automaticLayout: true,           // [MONACO] respond to container resize
+                      lineNumbers: "on",
+                      wordWrap: "on",
+                      tabSize: 2,
+                      padding: { top: 12 },
+                    }}
+                    onMount={handleEditorMount}         // [MONACO] add Cmd/Ctrl+Enter
+                    onChange={(val) => {
+                      setUserCode(val ?? "");
+                      markActivity();
+                    }}
+                  />
+                </div>
+                <div className="ed-foot">
+                  <p>The interviewer reads your code when you submit it.</p>
+                  <button type="button" className="btn" onClick={handleCodeSubmit} disabled={ended}>
+                    Submit code
+                    <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
         </main>
+
+        {/* ---- Time warning toast ---- */}
+        <div className={`toast${toast ? " show" : ""}`} role="status">
+          <i aria-hidden="true" /><span>{toast ?? ""}</span>
+        </div>
+
+        {/* ---- End confirmation ---- */}
+        {confirmEnd && !ending && (
+          <div className="veil" role="dialog" aria-modal="true" aria-labelledby="end-title">
+            <div className="sheet">
+              <div className="ic"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg></div>
+              <h2 id="end-title">End the interview now?</h2>
+              <p>We&apos;ll score what you&apos;ve covered so far and build your feedback. You can&apos;t resume this session.</p>
+              <div className="acts">
+                <button type="button" className="btn ghost" onClick={() => setConfirmEnd(false)}>Keep going</button>
+                <button
+                  type="button"
+                  className="btn dark"
+                  onClick={() => {
+                    setConfirmEnd(false);
+                    void handleEndInterview();
+                  }}
+                >
+                  End &amp; get feedback
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---- Wrapping up (while the feedback summary is generated) ---- */}
+        {ending && (
+          <div className="veil v-ending" role="alertdialog" aria-live="assertive" aria-labelledby="wrap-title">
+            <div className="wrap-up">
+              <div className="orb" aria-hidden="true"><i /></div>
+              <h2 id="wrap-title">Wrapping up <b>your session</b></h2>
+              <p>Writing your feedback and preparation score…</p>
+              <div className="prog" aria-hidden="true"><i /></div>
+            </div>
+          </div>
+        )}
       </SignedIn>
 
       <SignedOut>
-        <div className="flex items-center justify-center h-screen bg-black text-white flex-col gap-4">
-          <p>You need to sign in to access the interview.</p>
-          <SignInButton />
+        <div className="gate">
+          <div className="sheet">
+            <div className="ic"><svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg></div>
+            <h2>Sign in to start</h2>
+            <p>You need to sign in to access the interview.</p>
+            <div className="acts">
+              <SignInButton>
+                <button type="button" className="btn">Sign in</button>
+              </SignInButton>
+            </div>
+          </div>
         </div>
       </SignedOut>
-    </>
+    </div>
   );
 }

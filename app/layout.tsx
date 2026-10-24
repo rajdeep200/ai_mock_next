@@ -5,6 +5,7 @@ import "./globals.css";
 import Header from "@/component/Header";
 import RegisterUser from "@/component/RegisterUser";
 import Footer from "@/component/Footer";
+import HideOnHome from "@/component/ChromeGate";
 import { Analytics } from '@vercel/analytics/next';
 import { META_KEYWORDS } from "@/lib/constant";
 
@@ -71,14 +72,14 @@ export default function RootLayout({
         >
           {/* Make the whole app a column to pin footer at bottom */}
           <div className="min-h-screen flex flex-col">
-            <Header />
+            <HideOnHome><Header /></HideOnHome>
             <RegisterUser />
 
             {/* Page content grows */}
             <main className="flex-1">{children}</main>
 
             {/* Global footer */}
-            <Footer />
+            <HideOnHome><Footer /></HideOnHome>
           </div>
           <Analytics />
           <script

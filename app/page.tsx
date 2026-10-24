@@ -1,233 +1,274 @@
-'use client'
+import Link from "next/link";
+import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import "./home.css";
+import HomeHeader from "@/component/home/HomeHeader";
+import HomeFooter from "@/component/home/HomeFooter";
+import StartCard from "@/component/home/StartCard";
+import ScrollReveal from "@/component/home/ScrollReveal";
+import Plans from "@/component/home/Plans";
+import {
+  Arrow,
+  MicIcon,
+  TrendIcon,
+  ClockIcon,
+  ChatIcon,
+  ChipIcon,
+  ShieldIcon,
+  PulseIcon,
+  CodeIcon,
+} from "@/component/home/icons";
 
-import Link from 'next/link'
-import { FiArrowRight, FiCpu, FiMic, FiTrendingUp, FiClock, FiMessageSquare, FiShield } from 'react-icons/fi'
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["300", "500", "700"],
+  variable: "--font-bricolage",
+  display: "swap",
+});
+
+const figtree = Figtree({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-figtree",
+  display: "swap",
+});
+
+const BENEFITS = [
+  { k: "Low-latency voice", v: "Natural follow-ups", icon: <MicIcon /> },
+  { k: "Actionable feedback", v: "Approach + Big-O", icon: <TrendIcon /> },
+  { k: "Progress tracking", v: "Sessions & trends", icon: <ClockIcon /> },
+];
+
+const FEATURES = [
+  { title: "Interviewer-style prompts", desc: "Ambiguous statements with clarifying follow-ups — just like onsite.", icon: <ChatIcon /> },
+  { title: "Adaptive difficulty", desc: "Questions scale by topic, level, and target companies.", icon: <ChipIcon /> },
+  { title: "Low-latency voice", desc: "Speak your approach and get immediate hints or nudges.", icon: <MicIcon /> },
+  { title: "Actionable scoring", desc: "Signal, reasoning, edge cases, and communication — graded each session.", icon: <TrendIcon /> },
+  { title: "Progress you can track", desc: "History, trends, and summaries to target weak areas.", icon: <ClockIcon /> },
+  { title: "Privacy-first", desc: "Encrypted transport and mindful data handling — your practice stays yours.", icon: <ShieldIcon /> },
+];
+
+const SESSION_PARTS = [
+  { title: "You speak", desc: "Answer out loud. Your browser transcribes it, and a pause of a second and a half sends your answer.", icon: <MicIcon /> },
+  { title: "The interviewer replies", desc: "It asks follow-ups, nudges you at five, two and one minute left, and checks in if the room goes quiet.", icon: <PulseIcon /> },
+  { title: "You code", desc: "When the interview moves to the practical, the editor opens beside the conversation.", icon: <CodeIcon /> },
+];
+
+const SKILLS = [
+  { name: "Problem solving", score: 88 },
+  { name: "Communication", score: 76 },
+  { name: "Code quality", score: 81 },
+  { name: "Complexity", score: 70 },
+];
+
+const FAQS = [
+  { q: "What is MockQube?", a: "A mock interview you do by voice. An AI interviewer asks questions, reacts to your answers and can move you into a coding exercise." },
+  { q: "Which topics can I practice?", a: "MockQube focuses on data structures and algorithms (DSA) interviews, including company-style rounds." },
+  { q: "Do I need a microphone?", a: "The voice flow uses your browser's speech recognition, so a microphone and a supported browser work best. You can also write your answers in the editor." },
+  { q: "How long can a session be?", a: "Free sessions run up to 15 minutes, Starter up to 30, and Pro up to 60." },
+  { q: "Can I share my results?", a: "Yes. Any completed session can be turned into a public link with a preview image." },
+];
 
 export default function LandingPage() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-black text-white">
-      {/* === Background layers (grid + glow orbs + scanlines) === */}
-      <div aria-hidden className="pointer-events-none absolute inset-0">
-        {/* Neon grid */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(34,197,94,.08),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(34,197,94,.06),transparent_40%),radial-gradient(circle_at_40%_80%,rgba(59,130,246,.05),transparent_45%)]" />
-        <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,black_40%,transparent_75%)]">
-          <div className="h-full w-full bg-[linear-gradient(to_right,rgba(31,41,55,.6)_1px,transparent_1px),linear-gradient(to_bottom,rgba(31,41,55,.6)_1px,transparent_1px)] bg-[size:48px_48px]" />
-        </div>
-        {/* Soft vignette */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent,rgba(0,0,0,.7))]" />
-        {/* Scanlines */}
-        <div className="absolute inset-0 opacity-[.12] mix-blend-soft-light bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(255,255,255,.06)_3px,rgba(255,255,255,.06)_3px)] animate-scan" />
-      </div>
+    <div className={`mq ${bricolage.variable} ${figtree.variable}`}>
+      <ScrollReveal />
+      <HomeHeader />
 
-      {/* === Hero === */}
-      <section className="relative z-10 flex flex-col items-center justify-center px-6 pt-15 pb-10 text-center sm:pt-22">
-        <div className="mx-auto max-w-5xl">
-          <span className="inline-flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-300 backdrop-blur">
-            <span className="h-1.5 w-1.5 animate-ping-slow rounded-full bg-green-400" />
-            Your 24/7 AI Coding Interviewer
-          </span>
-
-          <h1 className="mt-6 bg-gradient-to-b from-white to-gray-400 bg-clip-text text-5xl font-extrabold leading-[1.1] text-transparent sm:text-6xl md:text-7xl">
-            Mock Interviews that
-            <br />
-            <span className="text-green-400 drop-shadow-[0_0_30px_rgba(34,197,94,.35)]">
-              feel like the real thing
-            </span>
-          </h1>
-
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-gray-300 sm:text-xl">
-            Practice DSA and company-style rounds with an adaptive AI interviewer. Think aloud, code in the browser,
-            get instant follow-ups, and leave each session with clear next steps.
-          </p>
-
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Link href="/home" className="group">
-              <button className="cursor-pointer relative inline-flex items-center gap-2 rounded-full bg-green-600 px-7 py-3 text-lg font-semibold text-white transition-all hover:bg-green-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400">
-                <span className="absolute inset-0 -z-10 rounded-full bg-green-500/30 blur-lg transition-opacity group-hover:opacity-100" />
-                Start Free Mock
-                <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />
-              </button>
-            </Link>
-            <Link href="/pricing">
-              <button className="cursor-pointer inline-flex items-center gap-2 rounded-full border border-gray-700/80 bg-gray-900/60 px-7 py-3 text-lg text-gray-200 backdrop-blur transition-all hover:border-green-700/70 hover:bg-gray-900">
-                See Plans
-              </button>
-            </Link>
-          </div>
-        </div>
-
-        {/* Floating benefit cards (credibility-safe) */}
-        <div className="mt-14 grid w-full max-w-5xl grid-cols-2 gap-4 sm:grid-cols-3">
-          {[
-            { k: 'Low-latency voice', v: 'Natural follow-ups', icon: <FiMic /> },
-            { k: 'Actionable feedback', v: 'Approach + Big-O', icon: <FiTrendingUp /> },
-            { k: 'Progress tracking', v: 'Sessions & trends', icon: <FiClock /> },
-          ].map((s, i) => (
-            <div
-              key={i}
-              className="animate-float rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-4 backdrop-blur transition hover:border-green-700/60"
-              style={{ animationDelay: `${i * 0.15}s` }}
-            >
-              <div className="mb-1 flex items-center gap-2 text-sm text-gray-400">
-                <span className="text-green-400">{s.icon}</span>
-                {s.k}
+      <div>
+        <section className="hero">
+          <div className="wrap">
+            <div>
+              <p className="tag"><i aria-hidden="true"></i>Your 24/7 AI Coding Interviewer</p>
+              <h1>
+                <span><em><b>Mock Interviews</b></em></span>
+                <span><em>that feel like</em></span>
+                <span><em>the real thing</em></span>
+              </h1>
+              <p className="lede">Practice DSA and company-style rounds with an adaptive AI interviewer. Think aloud, code in the browser, get instant follow-ups, and leave each session with clear next steps.</p>
+              <div className="cta-row">
+                <Link href="/home" className="btn">Start Free Mock<Arrow /></Link>
+                <a href="#plans" className="btn ghost">See Plans</a>
               </div>
-              <div className="text-2xl font-bold text-white">{s.v}</div>
             </div>
-          ))}
-        </div>
-      </section>
 
-      {/* === Features (glass cards) === */}
-      <section className="relative z-10 px-6 py-16 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <div className="mx-auto mb-10 max-w-3xl text-center">
-            <h2 className="text-3xl font-bold sm:text-4xl">
-              Everything you need to <span className="text-green-400">perform under pressure</span>
-            </h2>
-            <p className="mt-3 text-gray-300">
-              Compress weeks of prep into focused, measurable reps — without scheduling hassles or peer coordination.
-            </p>
+            <div className="stage" aria-hidden="true">
+              <svg className="orbit" viewBox="0 0 800 800">
+                <path d="M120 30 C 420 -40 780 120 790 420" stroke="#F2A33A" />
+                <path d="M60 330 C 160 640 520 760 790 560" stroke="#E5503A" />
+              </svg>
+              <div className="disc"></div>
+              <div className="session">
+                <div className="row"><span className="live">Live</span><span>24:10 left</span></div>
+                <p className="q">Your solution is O(n²). Can you get the lookup down to constant time?</p>
+                <div className="wave">
+                  {Array.from({ length: 18 }, (_, i) => <i key={i}></i>)}
+                </div>
+                <div className="foot"><span className="chip">DSA</span><span className="chip">Medium</span><span className="chip">30 min</span></div>
+              </div>
+              <div className="badge"><strong>82%</strong>prepared after the<br />last session</div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              {
-                title: 'Interviewer-style prompts',
-                desc: 'Ambiguous statements with clarifying follow-ups — just like onsite.',
-                icon: <FiMessageSquare />,
-              },
-              {
-                title: 'Adaptive difficulty',
-                desc: 'Questions scale by topic, level, and target companies.',
-                icon: <FiCpu />,
-              },
-              {
-                title: 'Low-latency voice',
-                desc: 'Speak your approach and get immediate hints or nudges.',
-                icon: <FiMic />,
-              },
-              {
-                title: 'Actionable scoring',
-                desc: 'Signal, reasoning, edge cases, and communication — graded each session.',
-                icon: <FiTrendingUp />,
-              },
-              {
-                title: 'Progress you can track',
-                desc: 'History, trends, and summaries to target weak areas.',
-                icon: <FiClock />,
-              },
-              {
-                title: 'Privacy-first',
-                desc: 'Encrypted transport and mindful data handling — your practice stays yours.',
-                icon: <FiShield />,
-              },
-            ].map((f, i) => (
-              <div
-                key={i}
-                className="group relative overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/50 p-6 backdrop-blur transition-all hover:border-green-700/70 hover:shadow-[0_0_40px_rgba(34,197,94,.15)]"
-              >
-                {/* corner glow */}
-                <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-green-500/20 blur-2xl transition-opacity group-hover:opacity-100" />
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-800 bg-black text-green-400">
-                  {f.icon}
+          <div className="wrap benefits-wrap">
+            <div className="benefits">
+              {BENEFITS.map((b) => (
+                <div className="benefit" key={b.k}>
+                  <span className="bi">{b.icon}</span>
+                  <small>{b.k}</small>
+                  <strong>{b.v}</strong>
                 </div>
-                <h3 className="text-xl font-semibold text-green-300">{f.title}</h3>
-                <p className="mt-2 text-gray-300">{f.desc}</p>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <StartCard />
+
+        <section className="sec" id="features">
+          <div className="wrap">
+            <div className="sec-head reveal">
+              <h2>Everything you need to <b>perform under pressure</b></h2>
+              <p className="lede">Compress weeks of prep into focused, measurable reps — without scheduling hassles or peer coordination.</p>
+            </div>
+            <div className="feats">
+              {FEATURES.map((f) => (
+                <article className="feat" key={f.title}>
+                  <div className="ic">{f.icon}</div>
+                  <h3>{f.title}</h3>
+                  <p>{f.desc}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="parts sec">
+          <div className="wrap">
+            <h2 className="reveal">What happens <b>inside a session</b></h2>
+            <div className="cards">
+              {SESSION_PARTS.map((p) => (
+                <article className="card" key={p.title}>
+                  <div className="ic">{p.icon}</div>
+                  <h3>{p.title}</h3>
+                  <p>{p.desc}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="steps sec" id="how">
+          <div className="wrap">
+            <div className="sec-head reveal">
+              <h2>Three steps from <b>nervous</b> to ready</h2>
+              <p className="lede">Set it up in under a minute. The rest is a conversation.</p>
+            </div>
+            <div className="arches">
+              <div className="arch a1">
+                <div className="pill-step">Step <span>1</span></div>
+                <p className="nm">Choose your challenge</p>
+                <h3>Pick your next coding challenge.</h3>
+                <p>Choose a DSA topic, difficulty level, and session length that match your preparation goals.</p>
+                <svg className="art" viewBox="0 0 200 90" fill="none" aria-hidden="true">
+                  <rect x="20" y="40" width="160" height="50" rx="14" fill="#fff" fillOpacity=".16" />
+                  <rect x="36" y="56" width="70" height="8" rx="4" fill="#fff" fillOpacity=".7" />
+                  <rect x="36" y="72" width="110" height="8" rx="4" fill="#fff" fillOpacity=".35" />
+                </svg>
               </div>
+              <div className="arch a2">
+                <div className="pill-step">Step <span>2</span></div>
+                <p className="nm">Solve it like a real interview</p>
+                <h3>Think aloud. Code. Solve.</h3>
+                <p>Work through the problem in your coding session and explain your approach just like you would in a real technical interview.</p>
+                <svg className="art" viewBox="0 0 200 90" fill="none" aria-hidden="true">
+                  <g fill="#FFB43A">
+                    <rect x="30" y="38" width="8" height="52" rx="4" /><rect x="48" y="26" width="8" height="64" rx="4" />
+                    <rect x="66" y="46" width="8" height="44" rx="4" /><rect x="84" y="18" width="8" height="72" rx="4" />
+                    <rect x="102" y="34" width="8" height="56" rx="4" /><rect x="120" y="48" width="8" height="42" rx="4" />
+                    <rect x="138" y="28" width="8" height="62" rx="4" /><rect x="156" y="42" width="8" height="48" rx="4" />
+                  </g>
+                </svg>
+              </div>
+              <div className="arch a3">
+                <div className="pill-step">Step <span>3</span></div>
+                <p className="nm">Know where you stand</p>
+                <h3>Get feedback. Level up.</h3>
+                <p>Review your performance report and preparation score to understand your strengths and identify what to improve next.</p>
+                <svg className="art" viewBox="0 0 200 90" fill="none" aria-hidden="true">
+                  <circle cx="100" cy="90" r="64" stroke="#fff" strokeOpacity=".35" strokeWidth="10" />
+                  <path d="M36 90a64 64 0 0 1 112-42" stroke="#fff" strokeWidth="10" strokeLinecap="round" />
+                </svg>
+              </div>
+            </div>
+            <div style={{ textAlign: "center", marginTop: 56 }}>
+              <a href="#start" className="btn">Start a session <Arrow /></a>
+            </div>
+          </div>
+        </section>
+
+        <Plans />
+
+        <section className="report">
+          <div className="report-in" id="reportBlock">
+            <div>
+              <h2>A score you <b>can act on</b></h2>
+              <p className="lede">Every session ends with written feedback on what went well, what to fix, and a preparation percentage you can compare from one attempt to the next.</p>
+              <a href="#start" className="btn">Try a session <Arrow /></a>
+            </div>
+            <div className="sheet" role="img" aria-label="Sample feedback report: 82 percent prepared. Problem solving 88, communication 76, code quality 81, complexity analysis 70.">
+              <div className="top">
+                <div className="meter"><div>82%</div></div>
+                <div><h3>Sample report: two-pointer problem</h3><small>Preparation percentage</small></div>
+              </div>
+              <div className="skills" aria-hidden="true">
+                {SKILLS.map((s) => (
+                  <div className="skill" key={s.name}>
+                    <span>{s.name}</span>
+                    <div className="track"><i style={{ "--w": `${s.score}%` } as React.CSSProperties}></i></div>
+                    <span>{s.score}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="quotes sec">
+          <div className="wrap">
+            <div className="sec-head reveal"><h2>Trusted by <b>early adopters</b></h2></div>
+            <div className="quote-grid">
+              <figure className="quote"><blockquote>“Feedback from our private beta users is coming soon. Stay tuned!”</blockquote><figcaption>— Early Access Program</figcaption></figure>
+              <figure className="quote"><blockquote>“Join our waitlist to shape the product and get early perks.”</blockquote><figcaption>— MockQube Team</figcaption></figure>
+            </div>
+            <p className="quote-note">Want to be one of the first to leave a testimonial? <Link href="/home">Join the beta</Link></p>
+          </div>
+        </section>
+
+        <section className="faq sec" id="faq">
+          <div className="wrap">
+            <div className="sec-head reveal"><h2>Questions <b>people ask</b></h2></div>
+            {FAQS.map((f) => (
+              <details className="q" key={f.q}>
+                <summary>{f.q}<i aria-hidden="true"></i></summary>
+                <p>{f.a}</p>
+              </details>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* === Testimonials / Social Proof (pre-launch safe) === */}
-      <section className="relative z-10 px-6 py-20">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="mb-10 text-center text-3xl font-bold sm:text-4xl">
-            Trusted by <span className="text-green-400">early adopters</span>
-          </h2>
-
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            {/* Pre-launch safe placeholders */}
-            <figure className="rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-6 text-left backdrop-blur">
-              <blockquote className="italic text-gray-300">
-                “Feedback from our private beta users is coming soon. Stay tuned!”
-              </blockquote>
-              <figcaption className="mt-4 font-semibold text-green-400">
-                — Early Access Program
-              </figcaption>
-            </figure>
-
-            <figure className="rounded-2xl border border-gray-800 bg-gradient-to-b from-gray-900/60 to-black/60 p-6 text-left backdrop-blur">
-              <blockquote className="italic text-gray-300">
-                “Join our waitlist to shape the product and get early perks.”
-              </blockquote>
-              <figcaption className="mt-4 font-semibold text-green-400">
-                — MockQube Team
-              </figcaption>
-            </figure>
+        <section className="final">
+          <div className="final-in">
+            <h2>Turn practice into <b>offers</b></h2>
+            <p>Do focused reps that mirror top-tier interviews. Speak, get feedback, repeat — until it’s muscle memory.</p>
+            <div className="btns">
+              <a href="#plans" className="btn ghost">See Plans</a>
+              <Link href="/home" className="btn">Start Practicing Now<Arrow /></Link>
+            </div>
           </div>
+        </section>
+      </div>
 
-          <p className="mt-8 text-center text-gray-400 text-sm">
-            🚀 Want to be one of the first to leave a testimonial?
-            <Link
-              href="/home"
-              className="ml-1 underline text-green-400 hover:text-green-300"
-            >
-              Join the beta
-            </Link>
-          </p>
-        </div>
-      </section>
-
-      {/* === CTA === */}
-      <section className="relative z-10 px-6 pb-24">
-        <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-green-700/40 bg-gradient-to-br from-green-700/30 via-green-700/10 to-black p-8 text-center shadow-[0_0_60px_rgba(34,197,94,.18)] sm:p-12">
-          <h2 className="text-3xl font-bold sm:text-4xl">
-            Turn practice into <span className="text-green-400">offers</span>
-          </h2>
-          <p className="mx-auto mt-3 max-w-2xl text-gray-100/90">
-            Do focused reps that mirror top-tier interviews. Speak, get feedback, repeat — until it’s muscle memory.
-          </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
-            <Link href="/home" className="group">
-              <button className="relative inline-flex items-center gap-2 rounded-full bg-black px-8 py-4 text-lg font-bold text-white transition-all hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400">
-                <span className="cursor-pointer absolute inset-0 -z-10 rounded-full bg-green-500/25 blur-xl transition-opacity group-hover:opacity-100" />
-                Start Practicing Now
-                <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />
-              </button>
-            </Link>
-            <Link href="/pricing">
-              <button className="cursor-pointer inline-flex items-center gap-2 rounded-full border border-green-700/50 bg-green-500/10 px-8 py-4 text-lg font-semibold text-green-200 backdrop-blur hover:border-green-500/70">
-                See Plans
-              </button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Local styles for subtle animation */}
-      <style jsx>{`
-        @keyframes float {
-          0% { transform: translateY(0px); }
-          50% { transform: translateY(-6px); }
-          100% { transform: translateY(0px); }
-        }
-        .animate-float {
-          animation: float 6s ease-in-out infinite;
-        }
-        @keyframes scan {
-          0% { transform: translateY(-100%); }
-          100% { transform: translateY(100%); }
-        }
-        .animate-scan {
-          animation: scan 12s linear infinite;
-          background-size: auto 6px;
-        }
-        .animate-ping-slow {
-          animation: ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
-      `}</style>
-    </main>
-  )
+      <HomeFooter />
+    </div>
+  );
 }

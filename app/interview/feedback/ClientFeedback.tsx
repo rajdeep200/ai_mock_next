@@ -1,216 +1,291 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FiLoader, FiArrowLeft } from "react-icons/fi";
 import Link from "next/link";
-import { ShareInterview } from "@/component/ShareInterview";
+import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import "./feedback.css";
+import AppHeader from "@/component/home/AppHeader";
+import HomeFooter from "@/component/home/HomeFooter";
+import ShareCard from "@/component/feedback/ShareCard";
+import { Arrow } from "@/component/home/icons";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default function FeedbackPage() {
-    return (
-        <Suspense
-            fallback={
-                <main className="min-h-screen bg-black text-white grid place-items-center p-6">
-                    <div className="flex items-center gap-3 text-gray-300">
-                        <FiLoader className="animate-spin text-emerald-400" />
-                        <span>Loading feedback…</span>
-                    </div>
-                </main>
-            }
-        >
-            <FeedbackInner />
-        </Suspense>
-    );
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["300", "500", "700"],
+  variable: "--font-bricolage",
+  display: "swap",
+});
+
+const figtree = Figtree({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-figtree",
+  display: "swap",
+});
+
+type SessionLite = {
+  technology: string;
+  company: string;
+  level: string;
+  duration: number;
+  feedback: string | null;
+  shareEnabled: boolean;
+  shareUrl: string | null;
+};
+
+const STAR_PATH = "M12 2.8l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.6 6.2 20.7l1.1-6.5L2.6 9.6l6.5-.9z";
+
+// The end-of-interview summary starts with "Preparation Percentage: NN%" (or N/A).
+function parseScore(feedback: string | null): number | null {
+  const m = feedback?.match(/Preparation Percentage:\s*(\d{1,3})\s*%/i);
+  return m ? Math.min(100, parseInt(m[1], 10)) : null;
 }
 
-function StarRating({
-    value,
-    onChange,
-}: {
-    value: number;
-    onChange: (n: number) => void;
-}) {
-    const stars = useMemo(() => [1, 2, 3, 4, 5], []);
-    const [hover, setHover] = useState<number | null>(null);
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-    return (
-        <div className="flex items-center gap-2" role="radiogroup" aria-label="Rating">
-            {stars.map((n) => {
-                const active = (hover ?? value) >= n;
-                return (
-                    <button
-                        key={n}
-                        type="button"
-                        role="radio"
-                        aria-checked={value === n}
-                        aria-label={`${n} star${n > 1 ? "s" : ""}`}
-                        onMouseEnter={() => setHover(n)}
-                        onMouseLeave={() => setHover(null)}
-                        onClick={() => onChange(n)}
-                        className={`text-3xl leading-none transition-transform duration-150
-              ${active
-                                ? "text-yellow-400 scale-105 drop-shadow-[0_0_8px_rgba(250,204,21,.35)]"
-                                : "text-gray-600 hover:text-gray-400"}
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded`}
-                    >
-                        ★
-                    </button>
-                );
-            })}
+export default function FeedbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className={`mqf ${bricolage.variable} ${figtree.variable}`}>
+          <div className="loading">Loading feedback…</div>
         </div>
-    );
+      }
+    >
+      <FeedbackInner />
+    </Suspense>
+  );
+}
+
+function StarRating({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const [popped, setPopped] = useState<number | null>(null);
+
+  return (
+    <div className="stars" role="radiogroup" aria-label="Rating">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          role="radio"
+          aria-checked={value === n}
+          aria-label={`${n} star${n > 1 ? "s" : ""}`}
+          className={`star${(hover ?? value) >= n ? " on" : ""}${popped === n ? " pop" : ""}`}
+          onMouseEnter={() => setHover(n)}
+          onMouseLeave={() => setHover(null)}
+          onClick={() => {
+            onChange(n);
+            setPopped(null);
+            requestAnimationFrame(() => setPopped(n));
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d={STAR_PATH} /></svg>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function FeedbackInner() {
-    const router = useRouter();
-    const sp = useSearchParams();
-    const sessionId = sp.get("sessionId") ?? "";
+  const router = useRouter();
+  const sp = useSearchParams();
+  const sessionId = sp.get("sessionId") ?? "";
 
-    const [rating, setRating] = useState(0);
-    const [comment, setComment] = useState("");
-    const [submitting, setSubmitting] = useState(false);
-    const [done, setDone] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
-    const missingSession = !sessionId;
+  const [session, setSession] = useState<SessionLite | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
-    const submit = async () => {
-        if (missingSession) return;
-        setSubmitting(true);
-        try {
-            const res = await fetch("/api/feedback", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionId, rating, comment }),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            setDone(true);
-            setTimeout(() => router.replace("/history"), 900);
-        } catch {
-            alert("Failed to submit feedback");
-        } finally {
-            setSubmitting(false);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (redirectTimer.current) clearTimeout(redirectTimer.current); }, []);
+
+  const missingSession = !sessionId;
+
+  // Session details power the summary card and the share card's starting state.
+  useEffect(() => {
+    if (!sessionId) {
+      setSessionLoaded(true);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setSession(data.session);
         }
-    };
+      } catch {
+        /* the page still works without session details */
+      } finally {
+        setSessionLoaded(true);
+      }
+    })();
+  }, [sessionId]);
 
-    return (
-        <main className="relative min-h-screen bg-black text-white flex items-center justify-center p-4 overflow-hidden">
-            {/* Ambient FX */}
-            <div aria-hidden className="pointer-events-none absolute inset-0">
-                <div className="absolute inset-0">
-                    <div className="animate-[float_10s_ease-in-out_infinite] absolute -top-16 left-[8%] h-72 w-72 rounded-full bg-emerald-500/10 blur-2xl" />
-                    <div className="animate-[float_12s_ease-in-out_infinite] absolute -bottom-20 right-[10%] h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl" />
+  const submit = async () => {
+    if (missingSession) return;
+    setSubmitting(true);
+    setSubmitError(false);
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, rating, comment }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setDone(true);
+      redirectTimer.current = setTimeout(() => router.replace("/history"), 900);
+    } catch {
+      setSubmitError(true);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const mood = rating === 0 ? "none" : rating <= 2 ? "low" : rating === 3 ? "mid" : "high";
+  const moodText =
+    rating === 0
+      ? "Select a rating to continue."
+      : rating <= 2
+        ? "We’re sorry it wasn’t great. Tell us what we can do better."
+        : rating === 3
+          ? "Thanks! Tell us how we can make it even better."
+          : "Awesome! What did you like the most?";
+
+  const state = done ? "done" : submitting ? "busy" : submitError ? "error" : "idle";
+  const score = parseScore(session?.feedback ?? null);
+  const techLabel = session ? (session.technology.toLowerCase() === "dsa" ? "DSA" : session.technology) : "";
+
+  return (
+    <div className={`mqf ${bricolage.variable} ${figtree.variable}`}>
+      <AppHeader active="history" />
+
+      <main className="page" data-mood={mood} data-state={state} data-session={missingSession ? "missing" : "ok"}>
+        <div className="disc" aria-hidden="true" />
+        <div className="wrap">
+          <div className="toprow">
+            <Link href="/history" className="back">
+              <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6" /></svg>
+              Back to History
+            </Link>
+            {sessionId && <span className="sess">Session {sessionId.slice(0, 8)}…</span>}
+          </div>
+
+          <div className="head">
+            <h1>
+              <span><em><b>How did your</b></em></span>
+              <span><em>interview go?</em></span>
+            </h1>
+            <p className="lede">Two quick taps help us improve question quality, pacing and hints.</p>
+          </div>
+
+          <div className="layout">
+            {/* LEFT: rating + comment */}
+            <div className="col">
+              <section className="card" aria-labelledby="rating-title">
+                <div className="formbits">
+                  <div className="card-h"><span className="num">1</span><h2 id="rating-title">Your rating</h2></div>
+                  <StarRating value={rating} onChange={setRating} />
+                  <div className="mood" aria-live="polite"><i aria-hidden="true" /><span>{moodText}</span></div>
+
+                  <div className="card-h" style={{ marginTop: 30 }}>
+                    <span className="num">2</span><h2>Comments</h2><span className="opt">Optional</span>
+                  </div>
+                  <div className="area">
+                    <textarea
+                      value={comment}
+                      onChange={(e) => setComment(e.target.value)}
+                      maxLength={2000}
+                      placeholder="Any thoughts about the interview experience?"
+                      aria-label="Comments"
+                    />
+                    <span className={`count${comment.length > 1800 ? " near" : ""}`}>{comment.length} / 2000</span>
+                  </div>
+
+                  <div className="note miss" role="alert">
+                    <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+                    <span>
+                      We couldn’t find a session to attach your feedback. You can still leave it, but it won’t be linked.{" "}
+                      <Link href="/start-interview">Start a new session</Link>
+                    </span>
+                  </div>
+                  <div className="note fail" role="alert">
+                    <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+                    <span>We couldn’t send your feedback. Please try again.</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn go"
+                    onClick={submit}
+                    disabled={submitting || rating === 0}
+                  >
+                    <span className="spn" aria-hidden="true" />
+                    <span>{submitting ? "Submitting…" : "Submit feedback"}</span>
+                    <Arrow />
+                  </button>
+                  {rating === 0 && <p className="fine">Pick a star rating to enable the button.</p>}
                 </div>
-                <div className="pointer-events-none absolute inset-0 opacity-[0.06] bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[length:100%_3px]" />
-                <div className="absolute inset-0 opacity-30 [mask-image:radial-gradient(55%_70%_at_50%_60%,black,transparent)]">
-                    <div className="h-full w-full bg-[linear-gradient(to_right,rgba(31,41,55,.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(31,41,55,.5)_1px,transparent_1px)] bg-[size:48px_48px]" />
+
+                <div className="thanks" role="status" aria-live="polite">
+                  <div className="tick"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></div>
+                  <h2>Thank you, <b>that helps</b></h2>
+                  <p>Taking you back to your history…</p>
+                  <div className="bar" aria-hidden="true"><i /></div>
                 </div>
+              </section>
             </div>
 
-            <div className="relative w-full max-w-xl">
-                {/* Card */}
-                <div className="rounded-2xl border border-emerald-600/30 bg-gray-950/70 backdrop-blur shadow-[0_0_30px_rgba(16,185,129,.18)] ring-1 ring-emerald-500/10 p-6 sm:p-8">
-                    {/* Back */}
-                    <div className="flex items-center justify-between mb-5">
-                        <Link
-                            href="/history"
-                            className="inline-flex items-center gap-2 text-emerald-400/90 hover:text-emerald-300 transition"
-                        >
-                            <FiArrowLeft /> Back to History
-                        </Link>
-                        {sessionId && (
-                            <span className="text-[11px] sm:text-xs px-2 py-1 rounded-full border border-emerald-500/30 text-emerald-300/90 bg-black/40">
-                                Session: {sessionId.slice(0, 8)}…
-                            </span>
-                        )}
+            {/* RIGHT: session summary + share */}
+            <div className="col">
+              {sessionId && !sessionLoaded && <div className="skel" aria-hidden="true" />}
+
+              {session && (
+                <section className="card ticket" aria-label="Session summary">
+                  <span className="eyebrow"><i aria-hidden="true" />Session complete</span>
+                  <h2>Nice work out there</h2>
+                  <div className="tchips">
+                    <span className="tchip">{techLabel}</span>
+                    {session.level && <span className="tchip">{cap(session.level)}</span>}
+                    {session.company && <span className="tchip">{session.company}</span>}
+                    <span className="tchip">{session.duration} min</span>
+                  </div>
+                  {score !== null && (
+                    <div className="score">
+                      <span className="ring" style={{ ["--p" as string]: score }} aria-hidden="true"><i>{score}%</i></span>
+                      <p><b>Preparation score</b>based on approach, correctness and complexity</p>
                     </div>
+                  )}
+                  <Link href={`/sessions/${sessionId}`} className="btn">
+                    Read your full AI feedback<Arrow />
+                  </Link>
+                </section>
+              )}
 
-                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                        <span className="bg-gradient-to-r from-emerald-300 via-green-400 to-emerald-200 bg-clip-text text-transparent">
-                            We value your feedback
-                        </span>
-                    </h1>
-                    <p className="mt-2 text-gray-300">
-                        Help us improve your mock interview experience.
-                    </p>
-
-                    {/* Rating */}
-                    <div className="mt-6">
-                        <label className="block text-sm font-medium text-emerald-300 mb-2">
-                            Your rating
-                        </label>
-                        <StarRating value={rating} onChange={setRating} />
-                        <p className="mt-2 text-xs text-gray-400">
-                            {rating === 0
-                                ? "Select a rating to continue."
-                                : rating <= 2
-                                    ? "We’re sorry it wasn’t great — tell us what we can do better."
-                                    : rating === 3
-                                        ? "Thanks! Tell us how we can make it even better."
-                                        : "Awesome! What did you like the most?"}
-                        </p>
-                    </div>
-
-                    {/* Comment */}
-                    <div className="mt-5">
-                        <label className="block text-sm font-medium text-emerald-300 mb-2">
-                            Comments (optional)
-                        </label>
-                        <textarea
-                            value={comment}
-                            onChange={(e) => setComment(e.target.value)}
-                            placeholder="Any thoughts about the interview experience?"
-                            rows={4}
-                            className="w-full bg-black/50 border border-gray-800 rounded-xl p-3 text-sm text-gray-200
-                         focus:ring-2 focus:ring-emerald-500 focus:outline-none transition"
-                        />
-                    </div>
-
-                    {missingSession && (
-                        <div className="mt-4 text-yellow-300/90 text-sm border border-yellow-700/60 bg-yellow-900/20 rounded-lg px-3 py-2">
-                            Couldn’t find a session to attach your feedback. You can still leave feedback,
-                            but it won’t be linked. Return to{" "}
-                            <Link href="/" className="underline hover:text-yellow-100">
-                                home
-                            </Link>{" "}
-                            to start a new session.
-                        </div>
-                    )}
-
-                    <button
-                        onClick={submit}
-                        disabled={submitting || rating === 0}
-                        className={`mt-6 w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl font-semibold
-                       transition shadow-[0_0_18px_rgba(16,185,129,.18)]
-                       ${submitting || rating === 0
-                                ? "bg-gray-800 text-gray-400 cursor-not-allowed"
-                                : "bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-500 hover:from-emerald-500 hover:via-green-500 hover:to-emerald-400 text-white"
-                            }`}
-                    >
-                        {submitting ? (
-                            <>
-                                <FiLoader className="animate-spin" /> Submitting…
-                            </>
-                        ) : done ? (
-                            "Thanks! Redirecting…"
-                        ) : (
-                            "Submit Feedback"
-                        )}
-                    </button>
-                </div>
-
-                <p className="mt-4 text-center text-xs text-gray-500">
-                    Your feedback helps improve question quality, pacing, and hints.
-                </p>
-
-                {sessionId && (
-                    <div className="mt-6">
-                        <ShareInterview sessionId={sessionId} />
-                    </div>
-                )}
+              {sessionId && sessionLoaded && (
+                <ShareCard
+                  sessionId={sessionId}
+                  initialEnabled={session?.shareEnabled}
+                  initialUrl={session?.shareUrl}
+                  score={score}
+                />
+              )}
             </div>
-        </main>
-    );
+          </div>
+
+          <p className="foot">Your feedback helps improve question quality, pacing and hints.</p>
+        </div>
+      </main>
+
+      <HomeFooter />
+    </div>
+  );
 }

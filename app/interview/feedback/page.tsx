@@ -12,10 +12,8 @@ export default function Page() {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-black text-white flex items-center justify-center p-4">
-                    <div className="w-full max-w-lg bg-gray-900 border border-gray-800 rounded-xl p-6 text-gray-300">
-                        Loading feedback…
-                    </div>
+                <main style={{ minHeight: "100svh", display: "grid", placeItems: "center", background: "#F4F0EA", color: "#5C5850", fontWeight: 600 }}>
+                    Loading feedback…
                 </main>
             }
         >

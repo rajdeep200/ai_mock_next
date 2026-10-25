@@ -63,6 +63,9 @@
 .mqi .notice .spn{width:18px;height:18px;border-radius:50%;border:3px solid rgba(22,21,15,.2);border-top-color:var(--ink);animation:i-spin .8s linear infinite;flex:none}
 .mqi .n-prep{background:#fff;border:1px solid var(--line)}
 .mqi .n-clamp{background:var(--sun)}
+.mqi .n-err{background:var(--blush)}
+.mqi .n-err svg.i{width:20px;height:20px;flex:none}
+.mqi .n-err .btn{min-height:36px;padding:0 18px;font-size:14px;margin-left:auto;background:var(--ink)}
 @keyframes i-spin{to{transform:rotate(360deg)}}
 
 /* stage */

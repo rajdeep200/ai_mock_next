@@ -37,12 +37,23 @@ const TIME_WARNINGS_S = [300, 120, 60];
 const END_TOKEN_REGEX = /(?:\[|<)?\s*END[\s_\-]*INTERVIEW\s*(?:\]|>|\/>)?/i;
 const containsEndToken = (text: string) => !!text && END_TOKEN_REGEX.test(text);
 type ChatRole = "user" | "assistant" | "system";
+type Msg = { role: ChatRole; content: string };
+
+const TURN_TIMEOUT_MS = 30_000;
+const SUMMARY_TIMEOUT_MS = 45_000;
+// Saved as the feedback when the page is closed before a real summary could be generated.
+const ABANDONED_FEEDBACK = "This interview ended early because the page was closed or refreshed, so no feedback was generated.";
+const FEEDBACK_FAILED = "Feedback could not be generated for this session.";
+const FEEDBACK_NO_ANSWERS = "No feedback was generated because the interview ended before any answers were recorded.";
+// Canned time-check lines are pushed locally (not written by the model); keep them out of the summary input.
+const CANNED_LINE_REGEX = /^(Time check: about \d+ minutes left\.|About 1 minute left—try to finalize your approach\.)$/;
 
 const ENC_KEY = process.env.NEXT_PUBLIC_ENC_KEY!
 
 export default function InterviewPage() {
   const [aiReply, setAiReply] = useState("");
-  const [history, setHistory] = useState<{ role: ChatRole; content: string }[]>([]);
+  // Source of truth for the transcript. A ref (not state) so timers and async callbacks never read a stale copy.
+  const historyRef = useRef<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [endLoading, setEndLoading] = useState(false);
   const [micOn, setMicOn] = useState(true);
@@ -57,6 +68,16 @@ export default function InterviewPage() {
 
   const searchParams = useSearchParams();
   const requestedDuration = parseInt(searchParams.get("duration") ?? "15", 10);
+  const sessionId = searchParams.get("sessionId") ?? "";
+  const histKey = `iv:${sessionId}`;
+  const endedFlagKey = `iv:${sessionId}:ended`;
+  const [guardDone, setGuardDone] = useState(false); // true once we know this session is still live
+  const [turnError, setTurnError] = useState(false);
+  const retryRef = useRef<(() => void) | null>(null);
+  const abandonBeaconRef = useRef<Blob | null>(null);
+  const savedRef = useRef(false); // real feedback has been saved
+  const busyRef = useRef(false); // a turn is in flight
+  const queuedRef = useRef<Msg[]>([]); // messages said while a turn was in flight
 
   // CHANGED: start as null so we **wait** for plan fetch before starting
   const [allowedMinutes, setAllowedMinutes] = useState<number | undefined>(undefined); // NEW
@@ -85,6 +106,9 @@ export default function InterviewPage() {
 
   // [SYNC] small in-memory cache: text -> objectURL (to avoid re-fetch on re-renders)
   const ttsCache = useRef<Map<string, string>>(new Map());
+
+  const micOnRef = useRef(true);
+  micOnRef.current = micOn;
 
   const { isSignedIn } = useAuth();
   const technology = searchParams.get("technology") ?? "React";
@@ -242,9 +266,13 @@ export default function InterviewPage() {
       return;
     }
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+      if (endedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       mediaStreamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
-    });
+    }).catch(() => { /* camera denied or missing: the interview works without it */ });
   }, [cameraOn]);
 
   // Voice → text capture
@@ -264,7 +292,7 @@ export default function InterviewPage() {
 
   const startListening = () => {
     if (endedRef.current) return;
-    if (!browserSupportsSpeechRecognition || !micOn) return;
+    if (!browserSupportsSpeechRecognition || !micOnRef.current) return;
     setTimeout(() => {
       SpeechRecognition.startListening({
         continuous: true,
@@ -288,168 +316,200 @@ export default function InterviewPage() {
     return () => { window.removeEventListener("beforeunload", cleanUp); cleanUp(); };
   }, []);
 
-  // CHANGED: Start interview only after allowedMinutes is known (not null)
+  // Decide whether this page should run an interview at all:
+  //  - a refresh was confirmed earlier (flag set on pagehide) -> finish that interview from the saved transcript
+  //  - the session is already completed (stale URL) -> go to its detail page
   useEffect(() => {
-    if (!isSignedIn || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
-    if (allowedMinutes === undefined) return; // NEW: wait for plan check
+    if (!isSignedIn) return;
+    if (!sessionId) { setGuardDone(true); return; }
+    let cancelled = false;
 
-    hasStartedRef.current = true;
+    (async () => {
+      let refreshed = false;
+      try { refreshed = sessionStorage.getItem(endedFlagKey) === "1"; } catch { }
+      if (refreshed) {
+        hasStartedRef.current = true; // never start a fresh interview for this session
+        try {
+          const raw = sessionStorage.getItem(histKey);
+          if (raw) historyRef.current = JSON.parse(raw);
+        } catch { }
+        void handleEndInterview({ auto: true });
+        return;
+      }
 
-    endAtRef.current = Date.now() + allowedMinutes * 60 * 1000; // CHANGED
-    setTimeLeft(allowedMinutes * 60);                            // CHANGED
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.session?.status === "completed") {
+            hasStartedRef.current = true;
+            router.replace(`/sessions/${sessionId}`);
+            return;
+          }
+        }
+      } catch { /* can't tell: let the interview start */ }
+      if (!cancelled) setGuardDone(true);
+    })();
 
-    const startInterview = async () => {
-      setLoading(true);
-      const prompt = getPromptsForInterview(technology, allowedMinutes, company, level); // CHANGED
-      const encPayload = await encrypt({ messages: [], systemPrompt: prompt }, ENC_KEY)
-      const res = await fetch("/api/interview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(encPayload),
-      });
-      const encOut = await res.json();
-      const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
+    return () => { cancelled = true; };
+  }, [isSignedIn, sessionId]);
 
-      // [SYNC] prepare TTS BEFORE rendering text
-      const preparedUrl = await prepareTTS(data.reply);
+  // While the interview is live: warn on refresh/close, and if the page really goes away
+  // mark the session ended (sendBeacon survives unload) and remember it so a reload can build the feedback.
+  useEffect(() => {
+    if (!isSignedIn || !sessionId || !guardDone) return;
 
-      const assistantMsg = { role: "assistant" as const, content: data.reply };
-      setHistory([assistantMsg]);
-      setAiReply(data.reply); // render after we have audio ready
+    let cancelled = false;
+    encrypt({ sessionId, feedback: ABANDONED_FEEDBACK }, ENC_KEY)
+      .then((payload) => {
+        if (!cancelled) abandonBeaconRef.current = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      })
+      .catch(() => { });
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (endedRef.current) return;
+      e.preventDefault();
+      e.returnValue = ""; // the browser shows its own generic confirmation
+    };
+    const onPageHide = () => {
+      if (savedRef.current) return;
+      try { sessionStorage.setItem(endedFlagKey, "1"); } catch { }
+      if (abandonBeaconRef.current) {
+        try { navigator.sendBeacon("/api/update-interview", abandonBeaconRef.current); } catch { }
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [isSignedIn, sessionId, guardDone]);
+
+  // Single place that changes the transcript (ref for logic, sessionStorage so a refresh can still be summarised).
+  const persistHistory = (next: Msg[]) => {
+    historyRef.current = next;
+    try { sessionStorage.setItem(histKey, JSON.stringify(next)); } catch { }
+  };
+
+  // One AI turn: send the transcript (plus `add`), speak and show the reply, handle the end token.
+  // Nothing is committed to the transcript until the reply arrives, so a failed turn can be retried safely.
+  const runTurn = async (add: Msg[], opts?: { silence?: boolean }): Promise<void> => {
+    if (endedRef.current) return;
+    if (busyRef.current) { queuedRef.current.push(...add); return; } // sent right after the current turn
+    busyRef.current = true;
+    setLoading(true);
+    setTurnError(false);
+    retryRef.current = null;
+    let failed = false;
+
+    try {
+      const pending = [...historyRef.current, ...add];
+      const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level);
+      const encPayload = await encrypt({ messages: pending, systemPrompt: prompt }, ENC_KEY);
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), TURN_TIMEOUT_MS);
+      let reply: string;
+      try {
+        const res = await fetch("/api/interview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(encPayload),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`interview ${res.status}`);
+        reply = (await decrypt<{ reply: string }>(await res.json(), ENC_KEY)).reply;
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!reply) throw new Error("empty reply");
+
+      // [SYNC] prepare audio before rendering text
+      const preparedUrl = await prepareTTS(reply);
+      if (endedRef.current) return; // ended while we were waiting (timer, End button)
+
+      persistHistory([...pending, { role: "assistant", content: reply }]);
+      setAiReply(reply);
       lastAgentActivityRef.current = Date.now();
-      silenceTriggeredRef.current = false;
-      setLoading(false);
+      setActiveView("question");
+      if (!opts?.silence) markActivity();
+      silenceTriggeredRef.current = !!opts?.silence; // a check-in must not re-trigger until someone acts
 
-      if (containsEndToken(data.reply)) {
+      if (containsEndToken(reply)) {
         await handleEndInterview({ auto: true });
         return;
       }
 
-      markActivity();
-      setStage("intro");
-
-      // [SYNC] play immediately on next frame so UI & audio feel simultaneous
       requestAnimationFrame(() => {
-        if (preparedUrl) {
-          void playTTS(preparedUrl, () => micOn && startListening());
-        } else {
-          if (micOn) startListening();
-        }
+        if (preparedUrl) void playTTS(preparedUrl, () => startListening());
+        else startListening();
       });
-    };
-    startInterview();
-  }, [isSignedIn, browserSupportsSpeechRecognition, company, level, technology, micOn, allowedMinutes]);
+    } catch (e) {
+      failed = true;
+      if (endedRef.current || opts?.silence) return; // a missed check-in isn't worth interrupting the user
+      console.error("[TURN_ERROR]", e);
+      const all = [...add, ...queuedRef.current];
+      queuedRef.current = [];
+      retryRef.current = () => { void runTurn(all, opts); };
+      setTurnError(true);
+      startListening(); // keep the mic usable
+    } finally {
+      busyRef.current = false;
+      setLoading(false);
+      if (!failed && !endedRef.current && queuedRef.current.length) {
+        const q = queuedRef.current;
+        queuedRef.current = [];
+        void runTurn(q);
+      }
+    }
+  };
+
+  // CHANGED: Start interview only after allowedMinutes is known (not null) and the session guard passed
+  useEffect(() => {
+    if (!isSignedIn || !guardDone || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
+    if (allowedMinutes === undefined) return; // wait for plan check
+
+    hasStartedRef.current = true;
+
+    endAtRef.current = Date.now() + allowedMinutes * 60 * 1000;
+    setTimeLeft(allowedMinutes * 60);
+    setStage("intro");
+    void runTurn([]);
+  }, [isSignedIn, guardDone, browserSupportsSpeechRecognition, company, level, technology, allowedMinutes]);
 
   const sendMessage = async (userInput: string) => {
     if (endedRef.current) return;
-    setLoading(true);
     if (/start.*code|let.?s code|i'?ll start/i.test(userInput)) setStage("coding");
     else if (/complexity|big ?o/i.test(userInput)) setStage("review");
-
-    const userMsg = { role: "user" as const, content: userInput };
-    const newHistory = [...history, userMsg];
-    setHistory(newHistory);
-
-    const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level); // CHANGED (safety)
-    const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
-    const res = await fetch("/api/interview", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(encPayload),
-    });
-    const encOut = await res.json();
-    const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
-
-    // [SYNC] prepare audio before showing text
-    const preparedUrl = await prepareTTS(data.reply);
-
-    const assistantMsg = { role: "assistant" as const, content: data.reply };
-    setHistory([...newHistory, assistantMsg]);
-    setAiReply(data.reply);
-    lastAgentActivityRef.current = Date.now();
-    silenceTriggeredRef.current = false;
-    setLoading(false);
-    setActiveView("question");
-
-    markActivity();
-
-    if (containsEndToken(data.reply)) {
-      await handleEndInterview({ auto: true });
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      if (preparedUrl) {
-        void playTTS(preparedUrl, () => micOn && startListening());
-      } else {
-        if (micOn) startListening();
-      }
-    });
+    await runTurn([{ role: "user", content: userInput }]);
   };
 
   const sendSilenceSystemEvent = async () => {
-    if (endedRef.current || loading) return; // don't overlap
-    try {
-      const sys: { role: ChatRole; content: string } = {
+    if (endedRef.current || busyRef.current) return; // don't overlap
+    await runTurn(
+      [{
         role: "system",
         content:
-          "The candidate has been silent for more than 2 minutes. Briefly check in (≤1 sentence) and ask if they need a hint or have any issue."
-      };
-
-      const newHistory = [...history, sys];
-      setHistory(newHistory);
-
-      setLoading(true);
-      const prompt = getPromptsForInterview(technology, allowedMinutes, company, level);
-      const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
-      const res = await fetch("/api/interview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(encPayload),
-      });
-      const encOut = await res.json();
-      const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
-
-      // [SYNC] prepare audio before rendering text
-      const preparedUrl = await prepareTTS(data.reply);
-
-      const assistantMsg = { role: "assistant" as const, content: data.reply };
-      setHistory([...newHistory, assistantMsg]);
-      setAiReply(data.reply);
-
-      // Mark AI activity + open mic again
-      lastAgentActivityRef.current = Date.now();
-      silenceTriggeredRef.current = true; // do not re-trigger until user/AI acts
-      setLoading(false);
-
-      requestAnimationFrame(() => {
-        if (preparedUrl) {
-          void playTTS(preparedUrl, () => micOn && startListening());
-        } else {
-          if (micOn) startListening();
-        }
-      });
-    } catch (e) {
-      console.error("[SILENCE_EVENT_ERROR]", e);
-      setLoading(false);
-    }
+          "The candidate has been silent for more than 2 minutes. Briefly check in (≤1 sentence) and ask if they need a hint or have any issue.",
+      }],
+      { silence: true }
+    );
   };
 
-  // [SYNC] make async so we can await TTS prep
+  // Local assistant line (time checks): not produced by the model, so it doesn't go through runTurn.
   const assistantPush = async (text: string) => {
-    const msg = { role: "assistant" as const, content: text };
-    setHistory((h) => [...h, msg]);
+    if (endedRef.current) return;
+    persistHistory([...historyRef.current, { role: "assistant", content: text }]);
     setAiReply(text);
     lastAgentActivityRef.current = Date.now();
     silenceTriggeredRef.current = false;
 
-    const url = await prepareTTS(text); // [SYNC]
+    const url = await prepareTTS(text);
     requestAnimationFrame(() => {
-      if (url) {
-        void playTTS(url, () => micOn && startListening());
-      } else {
-        if (micOn) startListening();
-      }
+      if (url) void playTTS(url, () => startListening());
+      else startListening();
     });
   };
 
@@ -500,7 +560,7 @@ export default function InterviewPage() {
     }, 1000);
 
     return () => clearInterval(tick);
-  }, [stage, micOn]);
+  }, [stage, micOn, allowedMinutes]);
 
   useEffect(() => {
     if (activeView === "editor" && stage === "clarify") setStage("coding");
@@ -521,7 +581,7 @@ export default function InterviewPage() {
     markActivity();
   };
 
-  const handleEndInterview = async (opts?: { auto?: boolean }) => {
+  const handleEndInterview = async (_opts?: { auto?: boolean }) => {
     if (endedRef.current) return;
     endedRef.current = true;
     setEnded(true);
@@ -540,54 +600,65 @@ export default function InterviewPage() {
       mediaStreamRef.current = null;
     }
 
-    const sessionId = searchParams.get("sessionId");
-
     try {
       if (sessionId) {
-        // Generate feedback
-        const encPayload = await encrypt({ messages: history, systemPrompt: SUMMARY_PROMPT }, ENC_KEY)
-        const resSummary = await fetch("/api/interview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(encPayload),
-        });
+        // Only the real conversation goes to the summary: no hidden check-ins, no canned time checks.
+        const transcriptMsgs = historyRef.current.filter(
+          (m) => m.role !== "system" && !(m.role === "assistant" && CANNED_LINE_REGEX.test(m.content.trim()))
+        );
 
         let feedback = "";
-        if (resSummary.ok) {
-          const response = await resSummary.json();
-          const { reply } = await decrypt(response, ENC_KEY);
-          feedback = reply ?? "";
+        if (transcriptMsgs.some((m) => m.role === "user")) {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), SUMMARY_TIMEOUT_MS);
+          try {
+            const encPayload = await encrypt({ messages: transcriptMsgs, systemPrompt: SUMMARY_PROMPT }, ENC_KEY);
+            const resSummary = await fetch("/api/interview", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(encPayload),
+              signal: ctrl.signal,
+            });
+            if (resSummary.ok) {
+              const { reply } = await decrypt<{ reply: string }>(await resSummary.json(), ENC_KEY);
+              feedback = reply ?? "";
+            }
+          } catch (e) {
+            console.error("Error generating feedback", e);
+          } finally {
+            clearTimeout(timer);
+          }
+          if (!feedback.trim()) feedback = FEEDBACK_FAILED;
+        } else {
+          feedback = FEEDBACK_NO_ANSWERS;
         }
+        feedback = feedback.slice(0, 5000); // API limit
 
-        let modelPrepPercent: number | undefined
-        const m = feedback.match(/Preparation Percentage:\s*(\d{1,3})%/i)
+        let modelPrepPercent: number | undefined;
+        const m = feedback.match(/Preparation Percentage:\s*(\d{1,3})%/i);
         if (m) {
           const n = Math.min(100, Math.max(0, parseInt(m[1], 10)));
           if (!Number.isNaN(n)) modelPrepPercent = n;
-        } else {
-          const na = /Preparation Percentage:\s*N\/A/i.test(feedback);
-          if (na) {
-            modelPrepPercent = undefined; // store null/undefined in DB
-          } else {
-            // fallback: if header malformed, don't store a number
-            modelPrepPercent = undefined;
-          }
-        }
+        } // "N/A" or a malformed header: no number is stored
 
         // Persist interview completion + feedback
         const encPayloadSummary = await encrypt({ sessionId, feedback, ...(typeof modelPrepPercent === 'number' ? { modelPreparationPercent: modelPrepPercent } : {}) }, ENC_KEY)
-        await fetch("/api/update-interview", {
+        const saveRes = await fetch("/api/update-interview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(encPayloadSummary),
         });
+        if (saveRes.ok) savedRef.current = true;
       }
     } catch (e) {
       console.error("Error finalizing interview", e);
       // We still redirect even if saving fails.
     } finally {
+      try {
+        sessionStorage.removeItem(histKey);
+        sessionStorage.removeItem(endedFlagKey);
+      } catch { }
       setEndLoading(false);
-      const sessionId = searchParams.get("sessionId") ?? "";
       router.replace(`/interview/feedback?sessionId=${encodeURIComponent(sessionId)}`);
     }
   };
@@ -595,56 +666,8 @@ export default function InterviewPage() {
   const handleCodeSubmit = async () => {
     if (endedRef.current) return;
     if (!userCode.trim()) return;
-
-    setLoading(true);
     setStage("review");
-    const userMsg = { role: "user" as const, content: `Here is my code:\n${userCode.trim()}` };
-    const newHistory = [...history, userMsg];
-
-    const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level); // CHANGED
-    const encPayload = await encrypt({ messages: newHistory, systemPrompt: prompt }, ENC_KEY)
-    const res = await fetch("/api/interview", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(encPayload),
-    });
-    const encOut = await res.json();
-    const data = await decrypt<{ reply: string }>(encOut, ENC_KEY);
-
-    // [SYNC] prepare audio first
-    const preparedUrl = await prepareTTS(data.reply);
-
-    const assistantMsg = { role: "assistant" as const, content: data.reply };
-    setHistory([...newHistory, assistantMsg]);
-    setAiReply(data.reply);
-    lastAgentActivityRef.current = Date.now();
-    silenceTriggeredRef.current = false;
-    setLoading(false);
-    setActiveView("question");
-
-    markActivity();
-
-    if (containsEndToken(data.reply)) {
-      await handleEndInterview({ auto: true });
-      return;
-    }
-
-    // [SYNC] play then queue your follow-up nudge
-    requestAnimationFrame(() => {
-      if (preparedUrl) {
-        void playTTS(preparedUrl, async () => {
-          // setTimeout(() => {
-          //   void assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
-          // }, 1200);
-          startListening();
-        });
-      } else {
-        // setTimeout(() => {
-        //   void assistantPush("Walk me through the time and space complexity, and any edge cases you tested.");
-        // }, 1200);
-        startListening();
-      }
-    });
+    await runTurn([{ role: "user", content: `Here is my code:\n${userCode.trim()}` }]);
   };
 
   // ---- Presentation only (no interview logic below this line) ----
@@ -749,6 +772,14 @@ export default function InterviewPage() {
             </span>
           </div>
         ) : null}
+
+        {turnError && !ending && (
+          <div className="notice n-err" role="alert">
+            <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+            <span>We couldn&apos;t reach the interviewer. Your answer wasn&apos;t lost.</span>
+            <button type="button" className="btn" onClick={() => retryRef.current?.()}>Try again</button>
+          </div>
+        )}
 
         <main className="stage">
           {/* LEFT: interviewer, you, live transcript */}

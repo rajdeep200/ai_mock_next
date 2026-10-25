@@ -2,9 +2,9 @@
 
 import { usePathname } from "next/navigation";
 
-// "/", "/home", "/pricing", "/start-interview" and "/interview" ship their own header/footer, so the global ones are skipped there.
+// "/", "/home", "/pricing", "/start-interview", "/interview" and "/interview/feedback" ship their own header/footer, so the global ones are skipped there.
 export default function HideOnHome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  if (["/", "/home", "/pricing", "/start-interview", "/interview"].includes(pathname)) return null;
+  if (["/", "/home", "/pricing", "/start-interview", "/interview", "/interview/feedback"].includes(pathname)) return null;
   return <>{children}</>;
 }

@@ -1,4 +1,12 @@
-export const DEFAULT_PROMPT = () => `
+// The candidate's real name comes from their account, so the interviewer never depends on how speech recognition spelled it.
+const nameInstruction = (name?: string) => {
+  const n = (name ?? "").trim().replace(/[^\p{L}\p{M}' .-]/gu, "").slice(0, 40);
+  return n
+    ? `\n- The candidate's name is "${n}". Use exactly this spelling, even if the transcription shows something different (e.g. a shortened or misheard name). Address them by name in the greeting and occasionally afterwards, not every turn.`
+    : "";
+};
+
+export const DEFAULT_PROMPT = (candidateName?: string) => `
 You are a highly experienced and professional Software Engineer acting as a Mock Interviewer for a technical interview session.
 
 Your job is to simulate a realistic technical interview across general software development concepts (including coding, architecture, design, and problem-solving).
@@ -34,16 +42,19 @@ Your job is to simulate a realistic technical interview across general software 
 
 Always conclude your messages with a question to keep the flow going.
 Start with your brief intro and ask the candidate to introduce themselves.
+After they answer, acknowledge one specific thing they said before moving on.
+
+Speech-to-text note: the candidate's messages come from automatic speech recognition and may be garbled. If a message makes no sense, ask them to repeat it instead of guessing.${nameInstruction(candidateName)}
 `;
 
-export const getPromptsForInterview = (topic: string, duration: number=30, company?: string, level?: string) => {
+export const getPromptsForInterview = (topic: string, duration: number=30, company?: string, level?: string, candidateName?: string) => {
   console.log(duration, company, level)
     switch (topic) {
       case 'dsa':
-        return DSA_PROMPT(duration, company, level)
-    
+        return DSA_PROMPT(duration, company, level, candidateName)
+
      default:
-      return DEFAULT_PROMPT();
+      return DEFAULT_PROMPT(candidateName);
     }
 }
 
@@ -198,9 +209,11 @@ export function pickTopicByLevel(level?: string, seed?: string): string {
 export const DSA_PROMPT = (
   duration: number = 30,
   company?: string,
-  level?: string
-) => { 
-  
+  level?: string,
+  candidateName?: string
+) => {
+  const nameLine = nameInstruction(candidateName);
+
   const topic = pickTopicByLevel(level);
   const L = String(level).toLowerCase();
   const difficulty = L.includes("hard")
@@ -249,9 +262,9 @@ DIFFICULTY: ${difficulty.toUpperCase()}
 - Professional, friendly, but evaluation-focused.
 
 # Flow (strict)
-1) Greeting (≤20 words) → ask for a brief self-introduction.
-2) Immediately say exactly: **"Let's start the practical."**
-3) Present a **slightly ambiguous** DSA problem (don’t reveal all constraints).
+1) Greeting (≤20 words)${nameLine ? `, addressing the candidate by name` : ""} → ask for a brief self-introduction.
+2) After they introduce themselves: react in ONE short, specific sentence that picks up something they actually said (role, experience, company, tech). Then ask ONE quick warm-up question (e.g. which language they will code in). Wait for the answer.
+3) Only after the warm-up answer, say exactly: **"Let's start the practical."** and present a **slightly ambiguous** DSA problem (don’t reveal all constraints).
 4) Wait for clarifying questions; reveal constraints only when asked.
 5) Once clarified, say: **"You can now start writing code."**
 6) While they work:
@@ -259,6 +272,12 @@ DIFFICULTY: ${difficulty.toUpperCase()}
    - If they stall, ask: “Do you want a small hint?” (never give the solution).
 7) After code: review briefly (correctness → complexity → edge cases → tests).
 8) Close with a short summary and ask if they have any questions.
+
+# Speech-to-text reality (very important)
+- The candidate's messages come from automatic speech recognition. It often mishears names, technical terms and short phrases, and may include stray markers.
+- If a message is garbled, cut off, or makes no sense in context, do NOT guess and do NOT move on. Say something like “Sorry, I didn’t catch that. Could you say it again?” and wait.
+- Never treat an unclear or one-word reply as a signal to start the practical or to advance the interview.
+- Never "correct" or comment on odd wording; just continue naturally.${nameLine}
 
 # Behavioral Rules
 - Do not give direct answers or full code.
@@ -283,7 +302,7 @@ DIFFICULTY: ${difficulty.toUpperCase()}
 
 # Output Rules (very important)
 - Start now with greeting + intro request.
-- After intro, say exactly: **"Let's start the practical."**
+- After the intro: one specific acknowledgement + one warm-up question. After the warm-up answer, say exactly: **"Let's start the practical."**
 - Then present an **ambiguous** problem (do not reveal constraints unless asked).
 - Keep turns short (≤80 words) and single-threaded (one question at a time).
 - Never reveal your internal reasoning or a full solution.

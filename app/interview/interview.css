@@ -209,3 +209,10 @@
 @media(prefers-reduced-motion:reduce){
   .mqi *,.mqi *::before,.mqi *::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}
 }
+.mqi .say .sendbar{display:block;height:3px;border-radius:3px;background:rgba(22,21,15,.08);overflow:hidden;position:relative;margin-top:6px}
+.mqi .say .sendbar::after{content:"";position:absolute;inset:0;background:var(--cobalt);transform-origin:left;animation:i-send var(--wait) linear forwards}
+@keyframes i-send{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.mqi .say .sact{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:8px}
+.mqi .say .sact .btn{min-height:34px;padding:0 16px;font-size:13px}
+.mqi .say .sact .btn.ghost.on{background:var(--ink);color:var(--paper)}
+.mqi .say .shint{font-size:12px;color:#7A756A}

@@ -12,6 +12,9 @@ export interface ISubscriptionOrder extends Document {
   updatedAt: Date;
   cfOrderId: Number;
   cfPaymentId: String;
+  lastWebhookEvent?: string;
+  lastWebhookNote?: string;
+  appliedAt?: Date | null;
 }
 
 const SubscriptionOrderSchema = new Schema<ISubscriptionOrder>(
@@ -28,6 +31,12 @@ const SubscriptionOrderSchema = new Schema<ISubscriptionOrder>(
     currency: { type: String, default: "INR" },
     cfOrderId: Number,
     cfPaymentId: String,
+    // Audit trail (these were being written before but silently dropped by strict mode)
+    raw: Schema.Types.Mixed,
+    lastWebhookEvent: String,
+    lastWebhookNote: String,
+    // Set once this order has actually granted its plan to the user; makes upgrades idempotent
+    appliedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

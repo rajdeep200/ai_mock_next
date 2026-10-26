@@ -172,3 +172,12 @@
   padding: .35rem .55rem;
   font-variant-numeric: tabular-nums;
 }
+
+/* Plan-ending notice shown at the top of every page (component/PlanBanner.tsx). Self-contained: pages use different themes. */
+.mq-planbar{display:flex;align-items:center;gap:16px;padding:10px clamp(14px,3vw,32px);background:#FFB43A;color:#16150F;font:500 15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+.mq-planbar p{flex:1;margin:0}
+.mq-planbar-cta{flex:none;padding:7px 18px;border-radius:999px;background:#16150F;color:#fff;font-weight:600;font-size:14px;text-decoration:none}
+.mq-planbar-x{flex:none;width:30px;height:30px;border-radius:50%;border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center}
+.mq-planbar-x:hover{background:rgba(22,21,15,.12)}
+.mq-planbar-x svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
+@media(max-width:640px){.mq-planbar{flex-wrap:wrap;gap:8px}.mq-planbar p{flex-basis:100%}}

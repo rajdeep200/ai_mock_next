@@ -1,26 +1,28 @@
 // lib/usage.ts
-import { monthKey, PLANS } from "./plans";
+import { effectivePlanId, monthKey, PLANS } from "./plans";
 import { Usage } from "@/models/Usage";
 import { User } from "@/models/User";
 
 type PlanKey = keyof typeof PLANS;
 
 // Narrow the shape we read from User when using lean()
-type UserLean = { plan?: string } | null;
+type UserLean = { plan?: string; planRenewsAt?: Date | null } | null;
 
 export async function getUserPlan(userId: string) {
-  // Only fetch the plan field and type the lean() result
+  // Only fetch the plan fields and type the lean() result
   const user = await User.findOne({ clerkId: userId })
-    .select("plan")
+    .select("plan planRenewsAt")
     .lean<UserLean>();
 
-  // Normalize to a valid plan id; default to "free"
-  const planId: PlanKey =
-    user?.plan && (user.plan in PLANS)
-      ? (user.plan as PlanKey)
-      : "free";
+  // A paid plan past its end date counts as Free; unknown plan ids fall back to Free too
+  const planId: PlanKey = effectivePlanId(user);
 
-  return { planId, plan: PLANS[planId] };
+  return {
+    planId,
+    plan: PLANS[planId],
+    // when the current paid pass ends (null for Free or a pass without an end date)
+    renewsAt: planId === "free" ? null : user?.planRenewsAt ?? null,
+  };
 }
 
 export async function getOrCreateUsage(userId: string, month = monthKey()) {

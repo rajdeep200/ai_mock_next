@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth, SignInButton } from "@clerk/nextjs";
 import { load } from "@cashfreepayments/cashfree-js";
-import { PLANS, type PlanId } from "@/lib/plans";
+import { PLANS, PLAN_RANK, RENEW_WINDOW_DAYS, type PlanId } from "@/lib/plans";
 import { Arrow } from "@/component/home/icons";
 import PlanCard, { type PlanFeature } from "./PlanCard";
 import PhoneModal from "./PhoneModal";
@@ -11,6 +11,7 @@ import PhoneModal from "./PhoneModal";
 type PlanResp = {
   plan: { id: PlanId; label: string; monthlyInterviewCap: number; maxMinutesPerInterview: number };
   usage: { interviewsCount: number; month: string };
+  renewsAt?: string | null; // when the current paid pass ends
 };
 
 type UserLite = { name?: string; phone?: string };
@@ -165,6 +166,12 @@ export default function PricingClient() {
   const limit = info ? info.plan.monthlyInterviewCap : 0;
   const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
 
+  const endsOn = info?.renewsAt
+    ? new Date(info.renewsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+  const daysLeft = info?.renewsAt ? Math.ceil((new Date(info.renewsAt).getTime() - Date.now()) / 86_400_000) : null;
+  const canRenew = daysLeft !== null && daysLeft <= RENEW_WINDOW_DAYS;
+
   const upgradeCta = (id: Paid, label: string) => {
     if (!signedIn) {
       return (
@@ -173,13 +180,15 @@ export default function PricingClient() {
         </SignInButton>
       );
     }
-    if (current === id) return <button className="btn" disabled>Current plan</button>;
+    // A pass can be renewed in its last few days; a lower plan can't be bought while a higher one is active.
+    if (current === id && !canRenew) return <button className="btn" disabled>{endsOn ? `Active until ${endsOn}` : "Current plan"}</button>;
+    if (current && PLAN_RANK[id] < PLAN_RANK[current]) return <button className="btn" disabled>Included in your plan</button>;
     if (phoneMissing) {
       return <button className="btn" type="button" onClick={() => setShowPhoneModal(true)}>Add phone to upgrade<Arrow /></button>;
     }
     return (
       <button className="btn" type="button" disabled={loadingPlan !== null} onClick={() => handleUpgrade(id)}>
-        {loadingPlan === id ? "Redirecting…" : <>{label}<Arrow /></>}
+        {loadingPlan === id ? "Redirecting…" : <>{current === id ? `Renew ${PLANS[id].label}` : label}<Arrow /></>}
       </button>
     );
   };
@@ -203,7 +212,7 @@ export default function PricingClient() {
                   <span className="ring" style={{ ["--used" as string]: pct }} aria-hidden="true">
                     <i>{used}/{limit}</i>
                   </span>
-                  <small>Current plan · {info.plan.label}</small>
+                  <small>Current plan · {info.plan.label}{endsOn ? ` · until ${endsOn}` : ""}</small>
                   <strong>{used} of {limit} interviews used</strong>
                   <p>Usage for <b>{info.usage.month}</b>. Level up for longer sessions.</p>
                 </div>

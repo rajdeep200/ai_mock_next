@@ -39,12 +39,13 @@ export async function GET() {
 
   // 3) Load user plan + usage; if anything throws, fall back to Free
   try {
-    const { planId, plan } = await getUserPlan(userId);
+    const { planId, plan, renewsAt } = await getUserPlan(userId);
     const usage = await getCurrentUsage(userId);
 
     return NextResponse.json({
       plan: { id: planId, ...plan },
       usage,
+      renewsAt: renewsAt ? new Date(renewsAt).toISOString() : null,
     });
   } catch {
     return NextResponse.json(

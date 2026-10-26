@@ -5,6 +5,7 @@ import { connectToDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import SubscriptionOrder from "@/models/SubscriptionOrder";
 import { CASHFREE_BASE_URL, cashfreeHeaders } from "@/lib/cashfree";
+import { effectivePlanId, PLANS, PLAN_RANK, RENEW_WINDOW_DAYS } from "@/lib/plans";
 import crypto from "crypto";
 
 const PRICE_TABLE = {
@@ -43,6 +44,34 @@ export async function POST(req: NextRequest) {
     const user = await User.findOne({ clerkId: userId });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Passes last PASS_DAYS and don't renew by themselves. Don't let a user pay for a lower plan than the one
+    // they have, or buy the current plan again long before it ends.
+    const current = effectivePlanId(user);
+    const until = user.planRenewsAt
+      ? new Date(user.planRenewsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+      : "";
+    if (PLAN_RANK[planId] < PLAN_RANK[current]) {
+      return NextResponse.json(
+        {
+          error: `You already have ${PLANS[current].label}${until ? `, active until ${until}` : ""}. You can switch to ${PRICE_TABLE[planId].label} after it ends.`,
+          code: "LOWER_PLAN",
+        },
+        { status: 409 }
+      );
+    }
+    if (planId === current && user.planRenewsAt) {
+      const daysLeft = Math.ceil((new Date(user.planRenewsAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+      if (daysLeft > RENEW_WINDOW_DAYS) {
+        return NextResponse.json(
+          {
+            error: `Your ${PRICE_TABLE[planId].label} plan is active until ${until}. You can renew it in the last ${RENEW_WINDOW_DAYS} days.`,
+            code: "ALREADY_ACTIVE",
+          },
+          { status: 409 }
+        );
+      }
     }
 
     const { amount, currency } = PRICE_TABLE[planId];

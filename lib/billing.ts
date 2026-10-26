@@ -1,7 +1,8 @@
 // lib/billing.ts
 // Single place that decides "was this order paid?" and "give the user their plan".
 // Used by both the Cashfree webhook and /api/billing/verify so they can never disagree.
-import { CASHFREE_BASE_URL, cashfreeHeaders, monthsFromNow } from "@/lib/cashfree";
+import { CASHFREE_BASE_URL, cashfreeHeaders } from "@/lib/cashfree";
+import { effectivePlanId, PASS_DAYS, PLAN_RANK } from "@/lib/plans";
 import { User } from "@/models/User";
 
 export type OrderOutcome = {
@@ -37,14 +38,29 @@ export async function applyPaidOrder(order: OrderDoc): Promise<boolean> {
   }
 
   if (!order.appliedAt) {
+    const now = new Date();
+    const current = effectivePlanId(user, now);
     // Orders marked paid by the old verify route never upgraded anyone. Those users are still on Free,
     // so grant the plan. If the user is already on a paid plan we leave it alone.
     const legacyPaid = order.status === "paid";
-    if (!legacyPaid || user.plan === "free") {
+
+    if (legacyPaid && current !== "free") {
+      // already on a paid plan: nothing to grant for this old order
+    } else if (PLAN_RANK[order.planId] < PLAN_RANK[current]) {
+      // Checkout blocks this, so it only happens if two orders raced. Never downgrade a paying user.
+      console.error("[BILLING] Paid order is below the user's active plan; plan left unchanged", {
+        orderId: order.orderId,
+        ordered: order.planId,
+        active: current,
+      });
+    } else {
+      // Buying the same plan while it's still active extends it; anything else starts a fresh pass now.
+      const stillActive = user.planRenewsAt && new Date(user.planRenewsAt).getTime() > now.getTime();
+      const base = current === order.planId && stillActive ? new Date(user.planRenewsAt) : now;
       user.plan = order.planId;
       user.subscriptionProvider = "cashfree";
       user.subscriptionId = order.orderId;
-      user.planRenewsAt = monthsFromNow(1);
+      user.planRenewsAt = new Date(base.getTime() + PASS_DAYS * 24 * 60 * 60 * 1000);
       user.cancelAtPeriodEnd = false;
       await user.save();
     }

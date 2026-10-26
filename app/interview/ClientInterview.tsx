@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
-import { SignedIn, SignedOut, SignInButton, useAuth } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -38,6 +38,25 @@ const END_TOKEN_REGEX = /(?:\[|<)?\s*END[\s_\-]*INTERVIEW\s*(?:\]|>|\/>)?/i;
 const containsEndToken = (text: string) => !!text && END_TOKEN_REGEX.test(text);
 type ChatRole = "user" | "assistant" | "system";
 type Msg = { role: ChatRole; content: string };
+
+// How long to wait after the last word before treating an answer as finished.
+const BASE_SILENCE_MS = 3000;
+const MAX_SILENCE_MS = 6000;
+const HOLD_MAX_MS = 60_000;
+// Endings that signal the sentence isn't finished yet.
+const UNFINISHED_END = /(?:^|\s)(so|and|but|because|then|if|or|like|um+|uh+|uhm|hmm+|the|a|an|to|of|is|that|which|with|maybe|basically|actually|i think|let me|for example)[\s,.]*$/i;
+const silenceWaitMs = (text: string) => {
+  const t = text.trim();
+  const words = t ? t.split(/\s+/).length : 0;
+  let ms = BASE_SILENCE_MS;
+  if (UNFINISHED_END.test(t)) ms += 2000; // mid-sentence
+  if (words < 4) ms += 1000;              // people often pause after the first few words
+  else if (words >= 25 && !UNFINISHED_END.test(t)) ms -= 500; // long answer that sounds done: don't drag
+  return Math.min(ms, MAX_SILENCE_MS);
+};
+
+// The browser recognizer sometimes leaks sentence markers such as "</S>" into the text.
+const cleanSpeech = (t: string) => t.replace(/<\/?s>/gi, " ").replace(/\s{2,}/g, " ").trim();
 
 const TURN_TIMEOUT_MS = 30_000;
 const SUMMARY_TIMEOUT_MS = 45_000;
@@ -111,14 +130,21 @@ export default function InterviewPage() {
   micOnRef.current = micOn;
 
   const { isSignedIn } = useAuth();
+  const { user, isLoaded: userLoaded } = useUser();
+  const candidateName = user?.firstName ?? "";
   const technology = searchParams.get("technology") ?? "React";
   const company = searchParams.get("company") ?? "";
   const level = searchParams.get("level") ?? "Junior";
   const router = useRouter();
 
-  const { transcript, resetTranscript, browserSupportsSpeechRecognition } = useSpeechRecognition();
+  const { transcript: rawTranscript, resetTranscript, listening, isMicrophoneAvailable, browserSupportsSpeechRecognition } = useSpeechRecognition();
+  const transcript = cleanSpeech(rawTranscript);
+  const [hold, setHold] = useState(false); // "Hold on": pause the auto-send while the user thinks
+  const [sendWait, setSendWait] = useState<{ ms: number; id: number } | null>(null); // drives the "sending in…" bar
+  const playingRef = useRef(false); // interviewer audio is loading/playing: keep the mic closed
 
   const cancelTTS = () => {
+    playingRef.current = false;
     setSpeaking(false);
     try {
       if (audioRef.current) {
@@ -158,6 +184,7 @@ export default function InterviewPage() {
     cancelTTS();
 
     try { SpeechRecognition.stopListening(); } catch {}
+    playingRef.current = true;
     objectUrlRef.current = url;
     const audio = new Audio(url);
     audioRef.current = audio;
@@ -170,13 +197,13 @@ export default function InterviewPage() {
       try { SpeechRecognition.stopListening(); } catch { }
     };
     audioRef.current.onended = () => {
-      if (isCurrent()) setSpeaking(false);
+      if (isCurrent()) { playingRef.current = false; setSpeaking(false); }
       // Re-arm mic with a small delay (handled inside startListening)
       startListening();
       onEnd?.();
     };
     audioRef.current.onerror = () => {
-      if (isCurrent()) setSpeaking(false);
+      if (isCurrent()) { playingRef.current = false; setSpeaking(false); }
       // If audio fails, still arm the mic so user can speak
       startListening();
       onEnd?.();
@@ -184,6 +211,7 @@ export default function InterviewPage() {
     try {
       await audioRef.current.play();
     } catch {
+      if (isCurrent()) playingRef.current = false;
       onEnd?.(); // autoplay blocked; keep flow going
     }
   };
@@ -276,17 +304,44 @@ export default function InterviewPage() {
   }, [cameraOn]);
 
   // Voice → text capture
+  // Send what the user said right now (used by the silence timer and the "Send now" button).
+  const flushSpeech = () => {
+    const spoken = transcript.trim();
+    if (!spoken) return;
+    resetTranscript();
+    setHold(false);
+    setSendWait(null);
+    markActivity();
+    void sendMessage(spoken);
+  };
+
   useEffect(() => {
-    if (!transcript.trim()) return;
+    if (!transcript.trim()) { setSendWait(null); return; }
     cancelTTS(); // [TTS] stop TTS when user speaks
-    const timeout = setTimeout(() => {
-      const spoken = transcript.trim();
-      resetTranscript();
-      markActivity();
-      sendMessage(spoken);
-    }, 1500);
+    if (hold) { setSendWait(null); return; } // user asked for time to think: don't auto-send
+    const ms = silenceWaitMs(transcript);
+    setSendWait({ ms, id: Date.now() }); // restarts the progress bar every time new words arrive
+    const timeout = setTimeout(flushSpeech, ms);
     return () => clearTimeout(timeout);
-  }, [transcript, resetTranscript]);
+  }, [transcript, resetTranscript, hold]);
+
+  // "Hold on" can't stall the interview: it releases by itself.
+  useEffect(() => {
+    if (!hold) return;
+    const t = setTimeout(() => setHold(false), HOLD_MAX_MS);
+    return () => clearTimeout(t);
+  }, [hold]);
+
+  // The browser's recognizer stops by itself after a long pause. Re-arm it (keeping the text captured so far)
+  // unless the mic is muted, the AI is talking, or the interview is over.
+  useEffect(() => {
+    if (listening || speaking || ended || !micOn || !guardDone) return;
+    if (!browserSupportsSpeechRecognition || !isMicrophoneAvailable) return;
+    const t = setTimeout(() => {
+      if (!playingRef.current) startListening();
+    }, 500);
+    return () => clearTimeout(t);
+  }, [listening, speaking, ended, micOn, guardDone, isMicrophoneAvailable]);
 
   const MIC_ARM_DELAY_MS = 300; // small buffer so the engine is "ready"
 
@@ -406,7 +461,7 @@ export default function InterviewPage() {
 
     try {
       const pending = [...historyRef.current, ...add];
-      const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level);
+      const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level, candidateName);
       const encPayload = await encrypt({ messages: pending, systemPrompt: prompt }, ENC_KEY);
 
       const ctrl = new AbortController();
@@ -468,7 +523,7 @@ export default function InterviewPage() {
 
   // CHANGED: Start interview only after allowedMinutes is known (not null) and the session guard passed
   useEffect(() => {
-    if (!isSignedIn || !guardDone || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
+    if (!isSignedIn || !guardDone || !userLoaded || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
     if (allowedMinutes === undefined) return; // wait for plan check
 
     hasStartedRef.current = true;
@@ -477,7 +532,7 @@ export default function InterviewPage() {
     setTimeLeft(allowedMinutes * 60);
     setStage("intro");
     void runTurn([]);
-  }, [isSignedIn, guardDone, browserSupportsSpeechRecognition, company, level, technology, allowedMinutes]);
+  }, [isSignedIn, guardDone, userLoaded, browserSupportsSpeechRecognition, company, level, technology, allowedMinutes]);
 
   const sendMessage = async (userInput: string) => {
     if (endedRef.current) return;
@@ -844,6 +899,18 @@ export default function InterviewPage() {
             <div className="say" aria-live="polite">
               <small><span>You&apos;re saying</span><span className="dots" aria-hidden="true"><i /><i /><i /></span></small>
               <p className={transcript ? undefined : "empty"}>{transcript || "…"}</p>
+              {transcript.trim() && (
+                <>
+                  {sendWait && !hold && <span className="sendbar" key={sendWait.id} style={{ ["--wait" as string]: `${sendWait.ms}ms` }} aria-hidden="true" />}
+                  <div className="sact">
+                    <button type="button" className="btn" onClick={flushSpeech} disabled={ended}>Send now</button>
+                    <button type="button" className={`btn ghost${hold ? " on" : ""}`} onClick={() => { setHold(!hold); markActivity(); }} disabled={ended} aria-pressed={hold}>
+                      {hold ? "Resume" : "Hold on"}
+                    </button>
+                    <span className="shint">{hold ? "Take your time. Press Send now when you're done." : "Sends after a short pause."}</span>
+                  </div>
+                </>
+              )}
             </div>
           </section>
 

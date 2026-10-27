@@ -216,3 +216,7 @@
 .mqi .say .sact .btn{min-height:34px;padding:0 16px;font-size:13px}
 .mqi .say .sact .btn.ghost.on{background:var(--ink);color:var(--paper)}
 .mqi .say .shint{font-size:12px;color:#7A756A}
+.mqi .iv .ivact{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mqi .iv .ivact .btn{min-height:32px;padding:0 14px;font-size:12.5px}
+.mqi .iv .ivact .btn.ghost.on{background:var(--ink);color:var(--paper)}
+.mqi .iv .ivact kbd{font:inherit;font-size:11px;opacity:.7;margin-left:6px;padding:1px 6px;border-radius:5px;border:1px solid currentColor}

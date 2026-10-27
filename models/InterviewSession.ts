@@ -24,6 +24,25 @@ const InterviewSessionSchema = new mongoose.Schema(
       default: null,
       set: (v: number | null) => (typeof v === "number" ? Math.round(v) : v),
     },
+    // Conversation, owned by the server (the client only ever sends its next message)
+    transcript: {
+      type: [
+        new mongoose.Schema(
+          {
+            role: { type: String, enum: ["user", "assistant", "system"], required: true },
+            content: { type: String, required: true },
+            at: { type: Date, default: Date.now },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
+    turnCount: { type: Number, default: 0 }, // AI turns used (capped per interview)
+    lastTurnAt: { type: Date, default: null }, // for the minimum gap between turns
+    feedbackGenerated: { type: Boolean, default: false }, // the real AI feedback exists (placeholders don't count)
+    summaryLockAt: { type: Date, default: null }, // set while feedback is being generated
+    scoreBreakdown: { type: mongoose.Schema.Types.Mixed, default: null }, // per-dimension rubric scores
     customerRating: { type: Number, min: 1, max: 5 },
     customerFeedback: String,
 

@@ -33,7 +33,8 @@ export type ScoreBreakdown = {
   dimensions: { key: DimensionKey; label: string; weight: number; score: number | null; evidence: string }[];
 };
 
-export type EvaluationResult = { feedback: string; percent: number | null; breakdown: ScoreBreakdown | null };
+export type ScoringUsage = { model: string; inTokens: number; outTokens: number };
+export type EvaluationResult = { feedback: string; percent: number | null; breakdown: ScoreBreakdown | null; usage: ScoringUsage | null };
 
 const SCORING_MODEL = process.env.OPENAI_SCORING_MODEL || "gpt-4.1";
 const FALLBACK_MODEL = "gpt-4o-mini";
@@ -98,7 +99,7 @@ function renderTranscript(msgs: Msg[]) {
   return out;
 }
 
-async function evaluateWith(client: OpenAI, model: string, transcript: string): Promise<Evaluation> {
+async function evaluateWith(client: OpenAI, model: string, transcript: string): Promise<{ evaluation: Evaluation; inTokens: number; outTokens: number }> {
   const completion = await client.chat.completions.create(
     {
       model,
@@ -117,7 +118,11 @@ async function evaluateWith(client: OpenAI, model: string, transcript: string): 
   );
   const text = completion.choices[0]?.message?.content;
   if (!text) throw new Error("empty evaluation");
-  return JSON.parse(text) as Evaluation;
+  return {
+    evaluation: JSON.parse(text) as Evaluation,
+    inTokens: completion.usage?.prompt_tokens ?? 0,
+    outTokens: completion.usage?.completion_tokens ?? 0,
+  };
 }
 
 const clampScore = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? Math.min(10, Math.max(0, Math.round(n))) : null);
@@ -141,25 +146,30 @@ const bullets = (items: string[]) => items.map((s) => `- ${s.trim()}`).join("\n"
 
 export async function evaluateInterview(transcript: Msg[]): Promise<EvaluationResult> {
   const userTurns = transcript.filter((m) => m.role === "user");
-  if (userTurns.length === 0) return { feedback: FEEDBACK_NO_ANSWERS, percent: null, breakdown: null };
+  if (userTurns.length === 0) return { feedback: FEEDBACK_NO_ANSWERS, percent: null, breakdown: null, usage: null };
 
   const text = renderTranscript(transcript);
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
   let evaluation: Evaluation | null = null;
   let modelUsed = SCORING_MODEL;
+  let usage: ScoringUsage | null = null;
   try {
-    evaluation = await evaluateWith(client, SCORING_MODEL, text);
+    const r = await evaluateWith(client, SCORING_MODEL, text);
+    evaluation = r.evaluation;
+    usage = { model: SCORING_MODEL, inTokens: r.inTokens, outTokens: r.outTokens };
   } catch (e) {
     console.error("[SCORING_ERROR]", SCORING_MODEL, e);
     try {
       modelUsed = FALLBACK_MODEL;
-      evaluation = await evaluateWith(client, FALLBACK_MODEL, text);
+      const r = await evaluateWith(client, FALLBACK_MODEL, text);
+      evaluation = r.evaluation;
+      usage = { model: FALLBACK_MODEL, inTokens: r.inTokens, outTokens: r.outTokens };
     } catch (e2) {
       console.error("[SCORING_FALLBACK_ERROR]", e2);
     }
   }
-  if (!evaluation) return { feedback: FEEDBACK_FAILED, percent: null, breakdown: null };
+  if (!evaluation) return { feedback: FEEDBACK_FAILED, percent: null, breakdown: null, usage };
 
   const dims = DIMENSIONS.map((d) => {
     const found = evaluation!.dimensions.find((x) => x.key === d.key);
@@ -189,5 +199,5 @@ export async function evaluateInterview(transcript: Msg[]): Promise<EvaluationRe
     lines.push("", "Score breakdown:", ...dims.map((d) => `- ${d.label}: ${d.score === null ? "not assessed" : `${d.score}/10`}`));
   }
 
-  return { feedback: lines.join("\n"), percent, breakdown: { percent, model: modelUsed, dimensions: dims } };
+  return { feedback: lines.join("\n"), percent, breakdown: { percent, model: modelUsed, dimensions: dims }, usage };
 }

@@ -19,12 +19,12 @@ type PlanInfo = {
 type Level = "easy" | "medium" | "hard";
 
 const MIN = 5;
-const MAX = 60;
+const MAX = 45;
 const STEP = 5;
 const DEFAULT_MINUTES = 30;
 
 const SUGGESTIONS = ["Google", "Amazon", "Microsoft", "Flipkart", "OpenAI"];
-const QUICK = [15, 30, 45, 60];
+const QUICK = [15, 30, 45];
 
 const LEVELS: { value: Level; label: string; hint: string }[] = [
   { value: "easy", label: "Easy", hint: "Warm up on the fundamentals" },
@@ -253,7 +253,7 @@ export default function StartInterviewClient() {
                 aria-label="Duration slider"
               />
             </div>
-            <div className="ticks" aria-hidden="true"><span>5</span><span>15</span><span>30</span><span>45</span><span>60</span></div>
+            <div className="ticks" aria-hidden="true"><span>5</span><span>15</span><span>25</span><span>35</span><span>45</span></div>
             {planInfo && maxMinutes < MAX && (
               <p className="limit-note">
                 <i></i>

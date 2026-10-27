@@ -6,8 +6,8 @@ const no = <span className="no" aria-label="Not included">–</span>;
 
 const ROWS: { label: string; free: React.ReactNode; starter: React.ReactNode; pro: React.ReactNode }[] = [
   { label: "Price per month", free: "₹0", starter: "₹599", pro: <><s style={{ fontWeight: 400, opacity: 0.6 }}>₹1249</s> ₹999</> },
-  { label: "Interviews per month", free: "2", starter: "20", pro: "60" },
-  { label: "Length of each interview", free: "Up to 15 min", starter: "Up to 30 min", pro: "Up to 60 min" },
+  { label: "Interviews per month", free: "2", starter: "15", pro: "25" },
+  { label: "Length of each interview", free: "Up to 15 min", starter: "Up to 30 min", pro: "Up to 45 min" },
   { label: "Voice AI interviewer", free: yes, starter: yes, pro: yes },
   { label: "Feedback report and score", free: yes, starter: yes, pro: yes },
   { label: "Company-specific patterns", free: no, starter: yes, pro: yes },
@@ -41,8 +41,8 @@ export default function Plans() {
             <h3>Starter</h3>
             <p className="pitch">Build consistency, improve your answers, and practice company-specific interview patterns.</p>
             <span className="price">₹599<small> /month</small></span>
-            <p className="limits">20 interviews · 30 minutes each</p>
-            <p className="per">About ₹29.95 per available session</p>
+            <p className="limits">15 interviews · 30 minutes each</p>
+            <p className="per">About ₹39.93 per available session</p>
             <Link href="/pricing" className="btn ghost">Build my interview skills <Arrow /></Link>
           </article>
 
@@ -53,8 +53,8 @@ export default function Plans() {
             <p className="pitch">Practice more, run longer mock interviews, and prepare for the companies you&apos;re targeting.</p>
             <span className="price"><s className="was" aria-label="Original price ₹1249">₹1249</s> ₹999<small> /month</small></span>
             <span className="save"><b>20% off</b> launch offer · you save ₹250/month</span>
-            <p className="limits">60 interviews · 60 minutes each · Every feature</p>
-            <p className="per">Just ₹16.65 per available interview session</p>
+            <p className="limits">25 interviews · 45 minutes each · Every feature</p>
+            <p className="per">About ₹39.96 per session, with longer sessions and every feature</p>
             <Link href="/pricing" className="btn">Get interview-ready with Pro <Arrow /></Link>
           </article>
         </div>
@@ -62,10 +62,10 @@ export default function Plans() {
 
         <div className="gap">
           <h3>Pay ₹400 more for <b>substantially more practice</b></h3>
-          <div className="side"><small>Starter · per month</small><strong>₹599</strong><span>20 interview sessions<br />Up to 30 minutes each</span></div>
+          <div className="side"><small>Starter · per month</small><strong>₹599</strong><span>15 interview sessions<br />Up to 30 minutes each</span></div>
           <div className="vs" aria-hidden="true">vs</div>
-          <div className="side up"><small>Pro · per month</small><strong>₹999</strong><span>60 interview sessions<br />Up to 60 minutes each</span></div>
-          <p className="why">Pro gives you 3× the monthly sessions and up to 2× the length of each one.</p>
+          <div className="side up"><small>Pro · per month</small><strong>₹999</strong><span>25 interview sessions<br />Up to 45 minutes each</span></div>
+          <p className="why">Pro gives you 10 more sessions a month, each up to 15 minutes longer, plus every feature.</p>
         </div>
 
         <div className="compare">

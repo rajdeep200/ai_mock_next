@@ -83,7 +83,11 @@ export async function POST(req: NextRequest) {
           scoreBreakdown: result.breakdown,
           feedbackGenerated: generated,
           summaryLockAt: null,
+          ...(result.usage ? { "usage.scoreModel": result.usage.model } : {}),
         },
+        ...(result.usage
+          ? { $inc: { "usage.scoreInTokens": result.usage.inTokens, "usage.scoreOutTokens": result.usage.outTokens } }
+          : {}),
       }
     );
 

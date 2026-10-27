@@ -8,6 +8,9 @@ import {
 } from "@aws-sdk/client-polly";
 import { auth } from "@clerk/nextjs/server";
 import { Readable } from "node:stream";
+import { Types } from "mongoose";
+import { connectToDB } from "@/lib/mongodb";
+import InterviewSession from "@/models/InterviewSession";
 
 export const runtime = "nodejs";
 
@@ -23,6 +26,7 @@ type Body = {
   engine?: "neural" | "standard";
   rate?: "slow" | "medium" | "fast";
   langHint?: "en-IN" | "en-US"; // optional, helps pick a fallback
+  sessionId?: string; // interview this audio belongs to (for cost tracking)
 };
 
 const MAX_CHARS = 2800;
@@ -87,6 +91,16 @@ export async function POST(req: NextRequest) {
     const out = await polly.send(cmd);
     if (!out.AudioStream) {
       return NextResponse.json({ error: "No audio stream" }, { status: 502 });
+    }
+
+    // Cost tracking: Polly bills by character of text, not of markup. Never blocks or fails the audio.
+    if (typeof body.sessionId === "string" && Types.ObjectId.isValid(body.sessionId)) {
+      const chars = (body.text ?? "").trim().length;
+      void connectToDB()
+        .then(() =>
+          InterviewSession.updateOne({ _id: body.sessionId, userId }, { $inc: { "usage.ttsCalls": 1, "usage.ttsChars": chars } })
+        )
+        .catch(() => { });
     }
 
     const nodeReadable = out.AudioStream as unknown as Readable;

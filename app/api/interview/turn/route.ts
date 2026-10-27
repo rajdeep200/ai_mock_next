@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
     let completion;
     try {
       completion = await openai.chat.completions.create(
-        { model: TURN_MODEL, messages, temperature: 0.7, max_completion_tokens: 450, stream: true },
+        { model: TURN_MODEL, messages, temperature: 0.7, max_completion_tokens: 450, stream: true, stream_options: { include_usage: true } },
         { signal: ctrl.signal }
       );
     } catch (e) {
@@ -198,6 +198,14 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder();
     const remaining = Math.round(remainingSec);
     let cancelled = false;
+    let tokensIn = 0;
+    let tokensOut = 0;
+    // What this call cost, recorded even when the turn fails or is dropped (the tokens were spent)
+    const recordUsage = () =>
+      InterviewSession.updateOne(
+        { _id: sessionId, userId },
+        { $inc: { "usage.turnCalls": 1, "usage.turnInTokens": tokensIn, "usage.turnOutTokens": tokensOut } }
+      ).catch(() => { });
     const eventStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const send = (o: Record<string, unknown>) => {
@@ -207,6 +215,7 @@ export async function POST(req: NextRequest) {
           send({ t: "meta", remainingSec: remaining });
           let full = "";
           for await (const chunk of completion) {
+            if (chunk.usage) { tokensIn = chunk.usage.prompt_tokens; tokensOut = chunk.usage.completion_tokens; }
             const d = chunk.choices[0]?.delta?.content;
             if (d) {
               full += d;
@@ -234,6 +243,7 @@ export async function POST(req: NextRequest) {
           }
         } finally {
           clearTimeout(timer);
+          await recordUsage();
           try { controller.close(); } catch { /* already closed */ }
         }
       },

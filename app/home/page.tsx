@@ -90,7 +90,7 @@ export default function HomePage() {
               <div className="ready">
                 <small>Ready when you are</small>
                 <p className="q">Pick a topic, a level and a length. Your interviewer takes it from there.</p>
-                <div className="foot"><span className="chip">DSA</span><span className="chip">Easy · Medium · Hard</span><span className="chip">15–60 min</span></div>
+                <div className="foot"><span className="chip">DSA</span><span className="chip">Easy · Medium · Hard</span><span className="chip">15–45 min</span></div>
               </div>
               <div className="badge"><strong>Voice + code</strong>in one session</div>
             </div>

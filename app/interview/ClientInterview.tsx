@@ -206,7 +206,7 @@ export default function InterviewPage() {
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: normalized, voiceId: "Raveena", engine: "neural", rate: "medium" }),
+        body: JSON.stringify({ text: normalized, voiceId: "Raveena", engine: "neural", rate: "medium", sessionId }),
       });
       if (!res.ok) return null;
       const blob = await res.blob();

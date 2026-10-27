@@ -26,7 +26,7 @@ const createInterviewSchema = z
       .number()
       .int("duration must be an integer (minutes)")
       .min(5, "duration must be at least 5 minutes")
-      .max(60, "duration cannot exceed 60 minutes")
+      .max(45, "duration cannot exceed 45 minutes")
       .refine((n) => n % 5 == 0, "duration must be in 5-minute increments"),
   })
   .strict();

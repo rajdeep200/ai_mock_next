@@ -20,14 +20,14 @@ export const PLANS: Record<PlanId, {
   },
   starter: {
     label: 'Starter',
-    monthlyInterviewCap: 20,
+    monthlyInterviewCap: 15,
     maxMinutesPerInterview: 30,
     features: { companyPatterns: true, premiumTTS: false, export: false, fullHistory: false },
   },
   pro: {
     label: 'Pro',
-    monthlyInterviewCap: 60,
-    maxMinutesPerInterview: 60,
+    monthlyInterviewCap: 25,
+    maxMinutesPerInterview: 45,
     features: { companyPatterns: true, premiumTTS: true, export: true, fullHistory: true },
   },
 };

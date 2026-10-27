@@ -72,7 +72,7 @@ export default function InvitePage() {
 
             // Optional: small delay then send them to home or start page
             setTimeout(() => {
-                router.replace("/home");
+                router.replace("/dashboard");
             }, 1200);
         } catch (e) {
             setUi({

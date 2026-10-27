@@ -14,11 +14,11 @@ export default function PricingHeader() {
           MockQube
         </Link>
         <nav className="main" aria-label="Main">
-          <Link href="/home">Home</Link>
+          <Link href="/dashboard">Home</Link>
           <Link href="/history">History</Link>
           <Link href="/pricing" className="on">Pricing</Link>
           <SignedOut>
-            <SignInButton forceRedirectUrl="/home">
+            <SignInButton forceRedirectUrl="/dashboard">
               <button className="btn">Sign in</button>
             </SignInButton>
           </SignedOut>

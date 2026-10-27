@@ -4,10 +4,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
 
-type Active = "home" | "dashboard" | "history" | "pricing" | null;
+type Active = "dashboard" | "history" | "pricing" | null;
 
-// Signed-in header used on /home and /start-interview (both routes are protected by middleware).
-export default function AppHeader({ active = "home" }: { active?: Active }) {
+// Signed-in header used on /dashboard, /start-interview and other signed-in pages.
+export default function AppHeader({ active = "dashboard" }: { active?: Active }) {
   const on = (k: Exclude<Active, null>) => (active === k ? "on" : undefined);
   return (
     <header className="top">
@@ -17,7 +17,6 @@ export default function AppHeader({ active = "home" }: { active?: Active }) {
           MockQube
         </Link>
         <nav className="main" aria-label="Main">
-          <Link href="/home" className={on("home")}>Home</Link>
           <Link href="/dashboard" className={on("dashboard")}>Dashboard</Link>
           <Link href="/history" className={on("history")}>History</Link>
           <Link href="/pricing" className={on("pricing")}>Pricing</Link>

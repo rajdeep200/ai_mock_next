@@ -86,7 +86,7 @@ export default function LandingPage() {
               </h1>
               <p className="lede">Practice DSA and company-style rounds with an adaptive AI interviewer. Think aloud, code in the browser, get instant follow-ups, and leave each session with clear next steps.</p>
               <div className="cta-row">
-                <Link href="/home" className="btn">Start Free Mock<Arrow /></Link>
+                <Link href="/dashboard" className="btn">Start Free Mock<Arrow /></Link>
                 <a href="#plans" className="btn ghost">See Plans</a>
               </div>
             </div>
@@ -240,7 +240,7 @@ export default function LandingPage() {
               <figure className="quote"><blockquote>“Feedback from our private beta users is coming soon. Stay tuned!”</blockquote><figcaption>— Early Access Program</figcaption></figure>
               <figure className="quote"><blockquote>“Join our waitlist to shape the product and get early perks.”</blockquote><figcaption>— MockQube Team</figcaption></figure>
             </div>
-            <p className="quote-note">Want to be one of the first to leave a testimonial? <Link href="/home">Join the beta</Link></p>
+            <p className="quote-note">Want to be one of the first to leave a testimonial? <Link href="/dashboard">Join the beta</Link></p>
           </div>
         </section>
 
@@ -262,7 +262,7 @@ export default function LandingPage() {
             <p>Do focused reps that mirror top-tier interviews. Speak, get feedback, repeat — until it’s muscle memory.</p>
             <div className="btns">
               <a href="#plans" className="btn ghost">See Plans</a>
-              <Link href="/home" className="btn">Start Practicing Now<Arrow /></Link>
+              <Link href="/dashboard" className="btn">Start Practicing Now<Arrow /></Link>
             </div>
           </div>
         </section>

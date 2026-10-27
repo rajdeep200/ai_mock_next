@@ -53,7 +53,7 @@ export default function StartCard() {
             </div>
           </div>
           <p className="note" id="note" aria-live="polite">{planHint(minutes)}</p>
-          <Link href="/home" className="btn">
+          <Link href="/dashboard" className="btn">
             Start session <Arrow />
           </Link>
         </div>

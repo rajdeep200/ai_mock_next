@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
       planLabel: PLAN_LABEL[order.planId] ?? order.planId,
       amount: order.amount,
       currency: order.currency,
+      paidAt: order.status === "paid" ? order.updatedAt : null,
     };
 
     // Same reconciliation the webhook uses: confirms with Cashfree and grants the plan if paid.

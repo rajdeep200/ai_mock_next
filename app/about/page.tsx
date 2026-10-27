@@ -223,7 +223,7 @@ export default function AboutPage() {
                     </p>
                     <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-6">
                         <a
-                            href="/home"
+                            href="/dashboard"
                             className="relative inline-flex items-center gap-2 rounded-full bg-green-600 px-7 py-3 text-lg font-semibold text-white transition hover:bg-green-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
                         >
                             <span className="absolute inset-0 -z-10 rounded-full bg-green-500/30 blur-lg" />

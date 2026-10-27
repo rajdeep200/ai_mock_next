@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Arrow } from "@/component/home/icons";
+import { FOCUS_TOPICS } from "@/lib/insights";
 
 type PlanInfo = {
   plan: {
@@ -43,6 +44,7 @@ export default function StartInterviewClient() {
 
   const [company, setCompany] = useState("");
   const [level, setLevel] = useState<Level | "">("");
+  const [focus, setFocus] = useState("");
   const [duration, setDuration] = useState(DEFAULT_MINUTES);
   const [touchedDuration, setTouchedDuration] = useState(false);
   const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
@@ -97,7 +99,7 @@ export default function StartInterviewClient() {
       const res = await fetch("/api/create-interview", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ technology: "dsa", company: trimmedCompany, level, duration }),
+        body: JSON.stringify({ technology: "dsa", company: trimmedCompany, level, duration, ...(focus ? { focus } : {}) }),
       });
 
       if (!res.ok) {
@@ -145,7 +147,7 @@ export default function StartInterviewClient() {
           <span><em><b>Set up your</b></em></span>
           <span><em>mock interview</em></span>
         </h1>
-        <p className="lede">Four quick choices and your interviewer takes it from there.</p>
+        <p className="lede">A few quick choices and your interviewer takes it from there.</p>
       </div>
 
       <div className="layout">
@@ -214,8 +216,29 @@ export default function StartInterviewClient() {
             <p className="err" style={{ marginTop: 12 }}>Pick a difficulty to continue.</p>
           </section>
 
+          <section className="step" aria-labelledby="s3b">
+            <div className="step-h"><span className="num">4</span><h2 id="s3b">Focus topic</h2><span className="req">Optional</span></div>
+            <div className="sugs" role="radiogroup" aria-labelledby="s3b">
+              <button type="button" role="radio" aria-checked={!focus} className={!focus ? "on" : undefined} onClick={() => setFocus("")}>
+                Any topic
+              </button>
+              {FOCUS_TOPICS.map((t) => (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={focus === t.key}
+                  key={t.key}
+                  className={focus === t.key ? "on" : undefined}
+                  onClick={() => setFocus(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
           <section className="step" aria-labelledby="s4">
-            <div className="step-h"><span className="num">4</span><h2 id="s4">Length</h2></div>
+            <div className="step-h"><span className="num">5</span><h2 id="s4">Length</h2></div>
             <div className="dur-top">
               <div className="stepper" role="group" aria-label="Duration in minutes">
                 <button type="button" aria-label="5 minutes less" onClick={() => setMinutes(duration - STEP)}>−</button>
@@ -310,6 +333,7 @@ export default function StartInterviewClient() {
               <div className="row"><dt>Focus</dt><dd>DSA</dd></div>
               <div className="row"><dt>Company</dt><dd className={trimmedCompany ? undefined : "empty"}>{trimmedCompany || "Not set yet"}</dd></div>
               <div className="row"><dt>Level</dt><dd className={level ? undefined : "empty"}>{level ? LEVEL_LABEL[level] : "Not set yet"}</dd></div>
+              <div className="row"><dt>Topic</dt><dd>{FOCUS_TOPICS.find((t) => t.key === focus)?.label ?? "Any"}</dd></div>
             </dl>
             <div className="time"><b>{duration}</b><span>minutes, voice + code</span></div>
           </div>

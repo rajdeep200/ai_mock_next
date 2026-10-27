@@ -58,6 +58,10 @@ export const TOPICS = [
   { key: "other", label: "Other" },
 ] as const;
 
+/** Topics a candidate can pick on the start page ("other" is only a scoring label). */
+export const FOCUS_TOPICS = TOPICS.filter((t) => t.key !== "other");
+export const FOCUS_KEYS = FOCUS_TOPICS.map((t) => t.key) as [string, ...string[]];
+
 /** Opposite pairs: if the model returns both, the evidence is unclear, so both are dropped. */
 export const CONFLICTS: [StrengthKey, IssueKey][] = [
   ["clarifying_questions", "no_clarifying_questions"],

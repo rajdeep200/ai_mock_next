@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
       status: string;
       technology: string;
       company?: string;
+      focus?: string;
       level: string;
       duration: number;
       startTime: Date;
@@ -153,7 +154,7 @@ export async function POST(req: NextRequest) {
       `Pace the session accordingly and begin wrapping up when 3 minutes or less remain. ` +
       `Do not announce the exact time unless asked.`;
     const systemPrompt =
-      getPromptsForInterview(session.technology.toLowerCase(), session.duration, session.company || undefined, session.level, candidateName) +
+      getPromptsForInterview(session.technology.toLowerCase(), session.duration, session.company || undefined, session.level, candidateName, session.focus || undefined) +
       clockNote;
 
     const history = fitToBudget([...transcript, ...added], MAX_CONTEXT_CHARS);

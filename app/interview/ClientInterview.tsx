@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
-import { SignedIn, SignedOut, SignInButton, useAuth, useUser } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import "./interview.css";
-import { getPromptsForInterview, SUMMARY_PROMPT } from "@/lib/prompts";
-import { decrypt, encrypt } from "@/lib/crypto";
+import { containsEndToken, MAX_LIVE_CODE_CHARS, MAX_MESSAGE_CHARS, type TurnType } from "@/lib/interview";
 import dynamic from "next/dynamic";
 
 const bricolage = Bricolage_Grotesque({
@@ -34,10 +33,6 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 type Stage = "intro" | "clarify" | "coding" | "review" | "wrapup";
 const TIME_WARNINGS_S = [300, 120, 60];
 
-const END_TOKEN_REGEX = /(?:\[|<)?\s*END[\s_\-]*INTERVIEW\s*(?:\]|>|\/>)?/i;
-const containsEndToken = (text: string) => !!text && END_TOKEN_REGEX.test(text);
-type ChatRole = "user" | "assistant" | "system";
-type Msg = { role: ChatRole; content: string };
 
 // How long to wait after the last word before treating an answer as finished.
 const BASE_SILENCE_MS = 3000;
@@ -59,20 +54,56 @@ const silenceWaitMs = (text: string) => {
 const cleanSpeech = (t: string) => t.replace(/<\/?s>/gi, " ").replace(/\s{2,}/g, " ").trim();
 
 const TURN_TIMEOUT_MS = 30_000;
-const SUMMARY_TIMEOUT_MS = 45_000;
-// Saved as the feedback when the page is closed before a real summary could be generated.
-const ABANDONED_FEEDBACK = "This interview ended early because the page was closed or refreshed, so no feedback was generated.";
-const FEEDBACK_FAILED = "Feedback could not be generated for this session.";
-const FEEDBACK_NO_ANSWERS = "No feedback was generated because the interview ended before any answers were recorded.";
-// Canned time-check lines are pushed locally (not written by the model); keep them out of the summary input.
-const CANNED_LINE_REGEX = /^(Time check: about \d+ minutes left\.|About 1 minute left—try to finalize your approach\.)$/;
+const SUMMARY_TIMEOUT_MS = 65_000;
 
-const ENC_KEY = process.env.NEXT_PUBLIC_ENC_KEY!
+type TurnPayload = { type: TurnType; content?: string };
+type ReplySpeaker = { push: (delta: string) => void; finish: () => void; abort: () => void };
+
+// ---- Splitting a streamed reply into sentences so each can be voiced as soon as it is complete ----
+const MIN_SENTENCE_CHARS = 24; // shorter pieces are joined to the next sentence instead of voiced alone
+const ABBREVIATION_END = /(?:^|[\s(])(e\.g|i\.e|vs|etc|mr|mrs|ms|dr|approx|fig|st)\.$/i;
+
+function takeSentences(text: string, final: boolean): { sentences: string[]; rest: string } {
+  const sentences: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    let end = -1;
+    if (c === "\n") {
+      end = i;
+    } else if (c === "." || c === "!" || c === "?") {
+      let j = i;
+      while (j + 1 < text.length && /[.!?"')\]]/.test(text[j + 1])) j++; // "?!", ".)" and the like
+      if (j + 1 >= text.length) {
+        if (!final) break; // can't tell yet whether the sentence ends here
+        end = j;
+      } else if (/\s/.test(text[j + 1]) && !(c === "." && ABBREVIATION_END.test(text.slice(start, j + 1)))) {
+        end = j; // "1.5" or "arr.length" have no space after the dot, so they never end a sentence
+      }
+      if (end === -1) i = j;
+    }
+    if (end >= 0) {
+      const s = text.slice(start, end + 1).trim();
+      if (s) sentences.push(s);
+      start = end + 1;
+      i = end;
+    }
+  }
+  return { sentences, rest: text.slice(start) };
+}
+
+class TurnError extends Error {
+  code?: string;
+  retryAfterMs?: number;
+  constructor(message: string, code?: string, retryAfterMs?: number) {
+    super(message);
+    this.code = code;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
 
 export default function InterviewPage() {
   const [aiReply, setAiReply] = useState("");
-  // Source of truth for the transcript. A ref (not state) so timers and async callbacks never read a stale copy.
-  const historyRef = useRef<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [endLoading, setEndLoading] = useState(false);
   const [micOn, setMicOn] = useState(true);
@@ -88,15 +119,16 @@ export default function InterviewPage() {
   const searchParams = useSearchParams();
   const requestedDuration = parseInt(searchParams.get("duration") ?? "15", 10);
   const sessionId = searchParams.get("sessionId") ?? "";
-  const histKey = `iv:${sessionId}`;
   const endedFlagKey = `iv:${sessionId}:ended`;
   const [guardDone, setGuardDone] = useState(false); // true once we know this session is still live
   const [turnError, setTurnError] = useState(false);
   const retryRef = useRef<(() => void) | null>(null);
-  const abandonBeaconRef = useRef<Blob | null>(null);
   const savedRef = useRef(false); // real feedback has been saved
   const busyRef = useRef(false); // a turn is in flight
-  const queuedRef = useRef<Msg[]>([]); // messages said while a turn was in flight
+  const inFlightRef = useRef<Promise<void> | null>(null); // resolves when the current turn is fully done
+  const clockSyncedRef = useRef(false); // the server's remaining time has been applied
+  const userCodeRef = useRef(""); // latest editor content, readable from async callbacks
+  const queuedRef = useRef<TurnPayload[]>([]); // things said while a turn was in flight
 
   // CHANGED: start as null so we **wait** for plan fetch before starting
   const [allowedMinutes, setAllowedMinutes] = useState<number | undefined>(undefined); // NEW
@@ -119,7 +151,6 @@ export default function InterviewPage() {
 
   // [TTS] audio refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
 
    const monacoEditorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
 
@@ -128,10 +159,18 @@ export default function InterviewPage() {
 
   const micOnRef = useRef(true);
   micOnRef.current = micOn;
+  // Headphones mode: the mic stays open while the interviewer talks, so speaking over them interrupts.
+  // Off by default because speakers would feed the interviewer's own voice back into the recognizer.
+  const [headphones, setHeadphones] = useState(false);
+  const headphonesRef = useRef(false);
+  headphonesRef.current = headphones;
+  useEffect(() => {
+    try { if (localStorage.getItem("mq-headphones") === "1") setHeadphones(true); } catch { }
+  }, []);
+  const allowedMinutesRef = useRef<number | undefined>(undefined);
+  allowedMinutesRef.current = allowedMinutes;
 
   const { isSignedIn } = useAuth();
-  const { user, isLoaded: userLoaded } = useUser();
-  const candidateName = user?.firstName ?? "";
   const technology = searchParams.get("technology") ?? "React";
   const company = searchParams.get("company") ?? "";
   const level = searchParams.get("level") ?? "Junior";
@@ -143,7 +182,11 @@ export default function InterviewPage() {
   const [sendWait, setSendWait] = useState<{ ms: number; id: number } | null>(null); // drives the "sending in…" bar
   const playingRef = useRef(false); // interviewer audio is loading/playing: keep the mic closed
 
+  // Bumped whenever speech is cancelled: a reply's audio pipeline only runs while its own token is current.
+  const speechTokenRef = useRef(0);
+
   const cancelTTS = () => {
+    speechTokenRef.current += 1;
     playingRef.current = false;
     setSpeaking(false);
     try {
@@ -151,10 +194,6 @@ export default function InterviewPage() {
         audioRef.current.pause();
         audioRef.current.src = "";
         audioRef.current = null;
-      }
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
       }
     } catch { }
   };
@@ -179,41 +218,118 @@ export default function InterviewPage() {
     }
   };
 
-  // [TTS] play a prepared URL
-  const playTTS = async (url: string, onEnd?: () => void) => {
-    cancelTTS();
+  // Play one audio clip. Resolves when it ends, fails to play, or is cancelled.
+  const playClip = (url: string, token: number): Promise<void> =>
+    new Promise((resolve) => {
+      if (token !== speechTokenRef.current) return resolve();
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      playingRef.current = true;
+      if (!headphonesRef.current) { try { SpeechRecognition.stopListening(); } catch { } }
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; resolve(); } };
+      audio.onplay = () => {
+        if (token === speechTokenRef.current) setSpeaking(true);
+        // keep the mic off while the interviewer talks, unless the user wears headphones
+        if (!headphonesRef.current) { try { SpeechRecognition.stopListening(); } catch { } }
+      };
+      audio.onended = done;
+      audio.onerror = done;
+      audio.play().catch(done); // autoplay blocked: skip the audio but keep the flow going
+    });
 
-    try { SpeechRecognition.stopListening(); } catch {}
-    playingRef.current = true;
-    objectUrlRef.current = url;
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    // Ignore state updates from an audio element that has since been replaced or cancelled.
-    const isCurrent = () => audioRef.current === audio;
+  // Shows and speaks one interviewer reply sentence by sentence while it is still being written:
+  // each finished sentence is sent to TTS straight away, and the sentences are played in order.
+  // The text for a sentence appears when its audio starts, so text and voice stay in step.
+  const createReplySpeaker = (opts?: { silence?: boolean; local?: boolean }) => {
+    cancelTTS(); // anything still speaking or queued is replaced
+    const token = speechTokenRef.current;
+    const alive = () => token === speechTokenRef.current;
+    const queue: { text: string; url: Promise<string | null> }[] = [];
+    let full = "";
+    let consumed = 0;
+    let carry = "";
+    let shown = false;
+    let pumping = false;
+    let finished = false;
+    let endSeen = false;
 
-    // When audio actually starts, make sure mic is off to avoid edge echoes
-    audioRef.current.onplay = () => {
-      if (isCurrent()) setSpeaking(true);
-      try { SpeechRecognition.stopListening(); } catch { }
+    const show = (text: string) => {
+      if (!shown) {
+        shown = true;
+        setAiReply(text);
+        setLoading(false);
+        lastAgentActivityRef.current = Date.now();
+        if (!opts?.local) setActiveView("question");
+        if (!opts?.local && !opts?.silence) markActivity();
+        silenceTriggeredRef.current = !!opts?.silence; // a check-in must not re-trigger until someone acts
+      } else {
+        setAiReply((prev) => `${prev} ${text}`);
+      }
     };
-    audioRef.current.onended = () => {
-      if (isCurrent()) { playingRef.current = false; setSpeaking(false); }
-      // Re-arm mic with a small delay (handled inside startListening)
-      startListening();
-      onEnd?.();
+
+    const complete = () => {
+      playingRef.current = false;
+      setSpeaking(false);
+      startListening(); // re-arm the mic once the interviewer has finished
     };
-    audioRef.current.onerror = () => {
-      if (isCurrent()) { playingRef.current = false; setSpeaking(false); }
-      // If audio fails, still arm the mic so user can speak
-      startListening();
-      onEnd?.();
+
+    const pump = async () => {
+      if (pumping) return;
+      pumping = true;
+      try {
+        while (alive()) {
+          const item = queue.shift();
+          if (!item) break;
+          const url = await item.url;
+          if (!alive()) return;
+          show(item.text);
+          if (url) await playClip(url, token);
+        }
+      } finally {
+        pumping = false;
+      }
+      if (alive() && finished && queue.length === 0) complete();
     };
-    try {
-      await audioRef.current.play();
-    } catch {
-      if (isCurrent()) playingRef.current = false;
-      onEnd?.(); // autoplay blocked; keep flow going
-    }
+
+    const emit = (s: string) => {
+      queue.push({ text: s, url: prepareTTS(s) });
+      void pump();
+    };
+
+    const flush = (final: boolean) => {
+      const { sentences, rest } = takeSentences(full.slice(consumed), final);
+      consumed = full.length - rest.length;
+      for (const s of sentences) {
+        const joined = carry ? `${carry} ${s}` : s;
+        if (joined.length < MIN_SENTENCE_CHARS && !final) { carry = joined; continue; } // too short to voice alone
+        carry = "";
+        emit(joined);
+      }
+      if (final) {
+        const tail = [carry, rest.trim()].filter(Boolean).join(" ").trim();
+        carry = "";
+        consumed = full.length;
+        if (tail) emit(tail);
+      }
+    };
+
+    return {
+      push(delta: string) {
+        if (!alive() || endSeen) return;
+        full += delta;
+        if (containsEndToken(full)) { endSeen = true; return; } // the interview is ending: don't voice anything more
+        flush(false);
+      },
+      finish() {
+        finished = true;
+        if (alive() && !endSeen) flush(true);
+        void pump();
+      },
+      abort() {
+        if (alive()) cancelTTS();
+      },
+    };
   };
 
   const language = (() => {
@@ -335,13 +451,43 @@ export default function InterviewPage() {
   // The browser's recognizer stops by itself after a long pause. Re-arm it (keeping the text captured so far)
   // unless the mic is muted, the AI is talking, or the interview is over.
   useEffect(() => {
-    if (listening || speaking || ended || !micOn || !guardDone) return;
+    if (listening || (speaking && !headphones) || ended || !micOn || !guardDone) return;
     if (!browserSupportsSpeechRecognition || !isMicrophoneAvailable) return;
     const t = setTimeout(() => {
-      if (!playingRef.current) startListening();
+      if (!playingRef.current || headphonesRef.current) startListening();
     }, 500);
     return () => clearTimeout(t);
-  }, [listening, speaking, ended, micOn, guardDone, isMicrophoneAvailable]);
+  }, [listening, speaking, ended, micOn, guardDone, isMicrophoneAvailable, headphones]);
+
+  // Cut the interviewer off and open the mic right away (button, or Space while they're talking).
+  const interrupt = () => {
+    if (endedRef.current) return;
+    cancelTTS();
+    resetTranscript();
+    startListening();
+  };
+
+  const toggleHeadphones = () => {
+    const next = !headphones;
+    setHeadphones(next);
+    try { localStorage.setItem("mq-headphones", next ? "1" : "0"); } catch { }
+    if (!playingRef.current) return;
+    if (next) startListening();
+    else { try { SpeechRecognition.stopListening(); } catch { } }
+  };
+
+  useEffect(() => {
+    if (!speaking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName) || t.isContentEditable || t.closest?.(".monaco-editor"))) return;
+      e.preventDefault();
+      interrupt();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [speaking]);
 
   const MIC_ARM_DELAY_MS = 300; // small buffer so the engine is "ready"
 
@@ -372,8 +518,9 @@ export default function InterviewPage() {
   }, []);
 
   // Decide whether this page should run an interview at all:
-  //  - a refresh was confirmed earlier (flag set on pagehide) -> finish that interview from the saved transcript
+  //  - a refresh was confirmed earlier (flag set on pagehide) -> finish that interview now (the server holds the transcript)
   //  - the session is already completed (stale URL) -> go to its detail page
+  //  - otherwise start, or pick up where the server transcript left off
   useEffect(() => {
     if (!isSignedIn) return;
     if (!sessionId) { setGuardDone(true); return; }
@@ -384,11 +531,7 @@ export default function InterviewPage() {
       try { refreshed = sessionStorage.getItem(endedFlagKey) === "1"; } catch { }
       if (refreshed) {
         hasStartedRef.current = true; // never start a fresh interview for this session
-        try {
-          const raw = sessionStorage.getItem(histKey);
-          if (raw) historyRef.current = JSON.parse(raw);
-        } catch { }
-        void handleEndInterview({ auto: true });
+        void handleEndInterview();
         return;
       }
 
@@ -414,13 +557,7 @@ export default function InterviewPage() {
   useEffect(() => {
     if (!isSignedIn || !sessionId || !guardDone) return;
 
-    let cancelled = false;
-    encrypt({ sessionId, feedback: ABANDONED_FEEDBACK }, ENC_KEY)
-      .then((payload) => {
-        if (!cancelled) abandonBeaconRef.current = new Blob([JSON.stringify(payload)], { type: "application/json" });
-      })
-      .catch(() => { });
-
+    const beacon = new Blob([JSON.stringify({ sessionId })], { type: "application/json" });
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (endedRef.current) return;
       e.preventDefault();
@@ -429,143 +566,191 @@ export default function InterviewPage() {
     const onPageHide = () => {
       if (savedRef.current) return;
       try { sessionStorage.setItem(endedFlagKey, "1"); } catch { }
-      if (abandonBeaconRef.current) {
-        try { navigator.sendBeacon("/api/update-interview", abandonBeaconRef.current); } catch { }
-      }
+      try { navigator.sendBeacon("/api/interview/abandon", beacon); } catch { }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     window.addEventListener("pagehide", onPageHide);
     return () => {
-      cancelled = true;
       window.removeEventListener("beforeunload", onBeforeUnload);
       window.removeEventListener("pagehide", onPageHide);
     };
   }, [isSignedIn, sessionId, guardDone]);
 
-  // Single place that changes the transcript (ref for logic, sessionStorage so a refresh can still be summarised).
-  const persistHistory = (next: Msg[]) => {
-    historyRef.current = next;
-    try { sessionStorage.setItem(histKey, JSON.stringify(next)); } catch { }
+  // Sync the timer to the server's clock, once (the server measures from when the session was created)
+  const syncClock = (remainingSec: number) => {
+    if (clockSyncedRef.current || !Number.isFinite(remainingSec)) return;
+    clockSyncedRef.current = true;
+    const cap = (allowedMinutesRef.current ?? requestedDuration) * 60;
+    endAtRef.current = Date.now() + Math.min(remainingSec, cap) * 1000;
   };
 
-  // One AI turn: send the transcript (plus `add`), speak and show the reply, handle the end token.
-  // Nothing is committed to the transcript until the reply arrives, so a failed turn can be retried safely.
-  const runTurn = async (add: Msg[], opts?: { silence?: boolean }): Promise<void> => {
+  // One AI turn: send our next message, then show and speak the reply as it streams in.
+  // The server commits the exchange only when the reply completes, so a failed turn can be retried safely.
+  const runTurn = async (p: TurnPayload, opts?: { silence?: boolean }): Promise<void> => {
     if (endedRef.current) return;
-    if (busyRef.current) { queuedRef.current.push(...add); return; } // sent right after the current turn
+    if (busyRef.current) { queuedRef.current.push(p); return; } // sent right after the current turn
     busyRef.current = true;
     setLoading(true);
     setTurnError(false);
     retryRef.current = null;
     let failed = false;
+    let speaker: ReplySpeaker | null = null;
+    let resolveFlight: () => void = () => { };
+    inFlightRef.current = new Promise<void>((r) => { resolveFlight = r; });
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TURN_TIMEOUT_MS);
 
     try {
-      const pending = [...historyRef.current, ...add];
-      const prompt = getPromptsForInterview(technology, allowedMinutes ?? requestedDuration, company, level, candidateName);
-      const encPayload = await encrypt({ messages: pending, systemPrompt: prompt }, ENC_KEY);
+      const code = userCodeRef.current.slice(0, MAX_LIVE_CODE_CHARS);
+      const res = await fetch("/api/interview/turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, ...p, ...(code.trim() ? { liveCode: code } : {}) }),
+        signal: ctrl.signal,
+      });
 
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), TURN_TIMEOUT_MS);
-      let reply: string;
-      try {
-        const res = await fetch("/api/interview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(encPayload),
-          signal: ctrl.signal,
-        });
-        if (!res.ok) throw new Error(`interview ${res.status}`);
-        reply = (await decrypt<{ reply: string }>(await res.json(), ENC_KEY)).reply;
-      } finally {
-        clearTimeout(timer);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new TurnError(data?.error || `Request failed (${res.status})`, data?.code, data?.retryAfterMs);
       }
-      if (!reply) throw new Error("empty reply");
 
-      // [SYNC] prepare audio before rendering text
-      const preparedUrl = await prepareTTS(reply);
-      if (endedRef.current) return; // ended while we were waiting (timer, End button)
+      let reply = "";
+      let ended = false;
 
-      persistHistory([...pending, { role: "assistant", content: reply }]);
-      setAiReply(reply);
-      lastAgentActivityRef.current = Date.now();
-      setActiveView("question");
-      if (!opts?.silence) markActivity();
-      silenceTriggeredRef.current = !!opts?.silence; // a check-in must not re-trigger until someone acts
+      if ((res.headers.get("content-type") ?? "").includes("application/json")) {
+        // Whole reply at once (reopening an interview returns the last question this way)
+        const data = await res.json();
+        reply = data?.reply ?? "";
+        ended = !!data?.ended;
+        syncClock(data?.remainingSec);
+        if (!reply) throw new TurnError("Empty reply");
+        if (!ended) {
+          speaker = createReplySpeaker(opts);
+          speaker.push(reply);
+          speaker.finish();
+        }
+      } else {
+        // Streamed reply: newline-delimited JSON events
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let gotDone = false;
 
-      if (containsEndToken(reply)) {
-        await handleEndInterview({ auto: true });
+        const handle = (line: string) => {
+          if (!line.trim()) return;
+          const ev = JSON.parse(line);
+          if (ev.t === "meta") syncClock(ev.remainingSec);
+          else if (ev.t === "delta") (speaker ??= createReplySpeaker(opts)).push(ev.text);
+          else if (ev.t === "done") {
+            gotDone = true;
+            reply = ev.reply;
+            ended = !!ev.ended;
+            syncClock(ev.remainingSec);
+          } else if (ev.t === "error") throw new TurnError(ev.error || "The interviewer is unavailable.", ev.code);
+        };
+
+        for (; ;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          lines.forEach(handle);
+        }
+        handle(buffer);
+        if (!gotDone) throw new TurnError("Connection lost"); // stream ended without the final event
+
+        if (!ended) {
+          speaker ??= createReplySpeaker(opts);
+          speaker.finish();
+        }
+      }
+
+      if (ended) {
+        speaker?.abort();
+        resolveFlight();
+        await handleEndInterview();
         return;
       }
-
-      requestAnimationFrame(() => {
-        if (preparedUrl) void playTTS(preparedUrl, () => startListening());
-        else startListening();
-      });
     } catch (e) {
       failed = true;
-      if (endedRef.current || opts?.silence) return; // a missed check-in isn't worth interrupting the user
+      speaker?.abort(); // drop whatever was still queued from a reply that didn't complete
+      if (endedRef.current) return;
+      const code = e instanceof TurnError ? e.code : undefined;
+      if (code === "TIME_UP" || code === "TURN_CAP") {
+        resolveFlight();
+        void handleEndInterview(); // the server says this interview is over
+        return;
+      }
+      if (code === "NOT_ACTIVE") {
+        endedRef.current = true;
+        router.replace(`/sessions/${sessionId}`);
+        return;
+      }
+      retryRef.current = () => { void runTurn(p, opts); };
+      if (code === "TOO_FAST") {
+        setTimeout(() => retryRef.current?.(), 1300); // quietly try again just after the minimum gap
+        return;
+      }
+      if (opts?.silence) return; // a missed check-in isn't worth interrupting the user
       console.error("[TURN_ERROR]", e);
-      const all = [...add, ...queuedRef.current];
-      queuedRef.current = [];
-      retryRef.current = () => { void runTurn(all, opts); };
       setTurnError(true);
       startListening(); // keep the mic usable
     } finally {
+      clearTimeout(timer);
+      resolveFlight();
       busyRef.current = false;
       setLoading(false);
       if (!failed && !endedRef.current && queuedRef.current.length) {
+        // Said while we were busy: send as one message (spoken pieces are merged)
         const q = queuedRef.current;
         queuedRef.current = [];
-        void runTurn(q);
+        const first = q[0];
+        if (first.type === "message") {
+          const merged = q.filter((x) => x.type === "message").map((x) => x.content).join(" ");
+          queuedRef.current = q.filter((x) => x.type !== "message");
+          void runTurn({ type: "message", content: merged });
+        } else {
+          queuedRef.current = q.slice(1);
+          void runTurn(first);
+        }
       }
     }
   };
 
   // CHANGED: Start interview only after allowedMinutes is known (not null) and the session guard passed
   useEffect(() => {
-    if (!isSignedIn || !guardDone || !userLoaded || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
+    if (!isSignedIn || !guardDone || hasStartedRef.current || !browserSupportsSpeechRecognition) return;
     if (allowedMinutes === undefined) return; // wait for plan check
+    if (!sessionId) { router.replace("/start-interview"); return; } // nothing to run without a session
 
     hasStartedRef.current = true;
 
-    endAtRef.current = Date.now() + allowedMinutes * 60 * 1000;
+    endAtRef.current = Date.now() + allowedMinutes * 60 * 1000; // provisional; replaced by the server's clock on the first reply
     setTimeLeft(allowedMinutes * 60);
     setStage("intro");
-    void runTurn([]);
-  }, [isSignedIn, guardDone, userLoaded, browserSupportsSpeechRecognition, company, level, technology, allowedMinutes]);
+    void runTurn({ type: "start" });
+  }, [isSignedIn, guardDone, browserSupportsSpeechRecognition, company, level, technology, allowedMinutes]);
 
   const sendMessage = async (userInput: string) => {
     if (endedRef.current) return;
     if (/start.*code|let.?s code|i'?ll start/i.test(userInput)) setStage("coding");
     else if (/complexity|big ?o/i.test(userInput)) setStage("review");
-    await runTurn([{ role: "user", content: userInput }]);
+    await runTurn({ type: "message", content: userInput });
   };
 
   const sendSilenceSystemEvent = async () => {
     if (endedRef.current || busyRef.current) return; // don't overlap
-    await runTurn(
-      [{
-        role: "system",
-        content:
-          "The candidate has been silent for more than 2 minutes. Briefly check in (≤1 sentence) and ask if they need a hint or have any issue.",
-      }],
-      { silence: true }
-    );
+    await runTurn({ type: "silence" }, { silence: true });
   };
 
-  // Local assistant line (time checks): not produced by the model, so it doesn't go through runTurn.
+  // Local assistant line (time checks): display and voice only. It never goes to the model or the transcript.
   const assistantPush = async (text: string) => {
     if (endedRef.current) return;
-    persistHistory([...historyRef.current, { role: "assistant", content: text }]);
-    setAiReply(text);
-    lastAgentActivityRef.current = Date.now();
-    silenceTriggeredRef.current = false;
-
-    const url = await prepareTTS(text);
-    requestAnimationFrame(() => {
-      if (url) void playTTS(url, () => startListening());
-      else startListening();
-    });
+    const speaker = createReplySpeaker({ local: true });
+    speaker.push(text);
+    speaker.finish();
   };
 
   // Proactive loop + HARD STOP at 0s
@@ -580,7 +765,7 @@ export default function InterviewPage() {
 
       // Single, bullet-proof stop condition
       if (secsLeft <= 0 && !endedRef.current) {
-        void handleEndInterview({ auto: true });
+        void handleEndInterview();
         return;
       }
 
@@ -636,7 +821,7 @@ export default function InterviewPage() {
     markActivity();
   };
 
-  const handleEndInterview = async (_opts?: { auto?: boolean }) => {
+  const handleEndInterview = async () => {
     if (endedRef.current) return;
     endedRef.current = true;
     setEnded(true);
@@ -657,62 +842,29 @@ export default function InterviewPage() {
 
     try {
       if (sessionId) {
-        // Only the real conversation goes to the summary: no hidden check-ins, no canned time checks.
-        const transcriptMsgs = historyRef.current.filter(
-          (m) => m.role !== "system" && !(m.role === "assistant" && CANNED_LINE_REGEX.test(m.content.trim()))
-        );
+        // If a reply was still being written, give the server a moment to finish saving it first
+        await Promise.race([inFlightRef.current ?? Promise.resolve(), new Promise<void>((r) => setTimeout(r, 4000))]);
 
-        let feedback = "";
-        if (transcriptMsgs.some((m) => m.role === "user")) {
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), SUMMARY_TIMEOUT_MS);
-          try {
-            const encPayload = await encrypt({ messages: transcriptMsgs, systemPrompt: SUMMARY_PROMPT }, ENC_KEY);
-            const resSummary = await fetch("/api/interview", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(encPayload),
-              signal: ctrl.signal,
-            });
-            if (resSummary.ok) {
-              const { reply } = await decrypt<{ reply: string }>(await resSummary.json(), ENC_KEY);
-              feedback = reply ?? "";
-            }
-          } catch (e) {
-            console.error("Error generating feedback", e);
-          } finally {
-            clearTimeout(timer);
-          }
-          if (!feedback.trim()) feedback = FEEDBACK_FAILED;
-        } else {
-          feedback = FEEDBACK_NO_ANSWERS;
+        // The server builds the feedback and score from the transcript it stored, and completes the session.
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), SUMMARY_TIMEOUT_MS);
+        try {
+          const res = await fetch("/api/interview/summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId }),
+            signal: ctrl.signal,
+          });
+          if (res.ok) savedRef.current = true;
+        } finally {
+          clearTimeout(timer);
         }
-        feedback = feedback.slice(0, 5000); // API limit
-
-        let modelPrepPercent: number | undefined;
-        const m = feedback.match(/Preparation Percentage:\s*(\d{1,3})%/i);
-        if (m) {
-          const n = Math.min(100, Math.max(0, parseInt(m[1], 10)));
-          if (!Number.isNaN(n)) modelPrepPercent = n;
-        } // "N/A" or a malformed header: no number is stored
-
-        // Persist interview completion + feedback
-        const encPayloadSummary = await encrypt({ sessionId, feedback, ...(typeof modelPrepPercent === 'number' ? { modelPreparationPercent: modelPrepPercent } : {}) }, ENC_KEY)
-        const saveRes = await fetch("/api/update-interview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(encPayloadSummary),
-        });
-        if (saveRes.ok) savedRef.current = true;
       }
     } catch (e) {
       console.error("Error finalizing interview", e);
-      // We still redirect even if saving fails.
+      // We still redirect even if this fails; the session page shows whatever was saved.
     } finally {
-      try {
-        sessionStorage.removeItem(histKey);
-        sessionStorage.removeItem(endedFlagKey);
-      } catch { }
+      try { sessionStorage.removeItem(endedFlagKey); } catch { }
       setEndLoading(false);
       router.replace(`/interview/feedback?sessionId=${encodeURIComponent(sessionId)}`);
     }
@@ -720,9 +872,10 @@ export default function InterviewPage() {
 
   const handleCodeSubmit = async () => {
     if (endedRef.current) return;
-    if (!userCode.trim()) return;
+    const code = userCode.trim();
+    if (!code) return;
     setStage("review");
-    await runTurn([{ role: "user", content: `Here is my code:\n${userCode.trim()}` }]);
+    await runTurn({ type: "code", content: code.slice(0, MAX_MESSAGE_CHARS) });
   };
 
   // ---- Presentation only (no interview logic below this line) ----
@@ -847,6 +1000,23 @@ export default function InterviewPage() {
                 <span className="s-listening">Listening to you</span>
                 <span className="s-thinking">Thinking…</span>
                 <span className="s-muted">Your mic is muted</span>
+              </div>
+              <div className="ivact">
+                {speaking && !ended && (
+                  <button type="button" className="btn" onClick={interrupt}>
+                    {headphones ? "Skip" : "Interrupt"} <kbd>Space</kbd>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`btn ghost${headphones ? " on" : ""}`}
+                  onClick={toggleHeadphones}
+                  disabled={ended}
+                  aria-pressed={headphones}
+                  title="With headphones, you can talk over the interviewer to interrupt. Without them, your mic would pick up their voice."
+                >
+                  Headphones: {headphones ? "on" : "off"}
+                </button>
               </div>
               <div className="wave" aria-hidden="true">
                 {Array.from({ length: 24 }, (_, i) => <i key={i} />)}
@@ -992,6 +1162,7 @@ export default function InterviewPage() {
                     }}
                     onMount={handleEditorMount}         // [MONACO] add Cmd/Ctrl+Enter
                     onChange={(val) => {
+                      userCodeRef.current = val ?? "";
                       setUserCode(val ?? "");
                       markActivity();
                     }}

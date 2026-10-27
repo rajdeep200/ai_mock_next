@@ -1,3 +1,5 @@
+import { FOCUS_TOPICS } from "@/lib/insights";
+
 // The candidate's real name comes from their account, so the interviewer never depends on how speech recognition spelled it.
 const nameInstruction = (name?: string) => {
   const n = (name ?? "").trim().replace(/[^\p{L}\p{M}' .-]/gu, "").slice(0, 40);
@@ -47,11 +49,11 @@ After they answer, acknowledge one specific thing they said before moving on.
 Speech-to-text note: the candidate's messages come from automatic speech recognition and may be garbled. If a message makes no sense, ask them to repeat it instead of guessing.${nameInstruction(candidateName)}
 `;
 
-export const getPromptsForInterview = (topic: string, duration: number=30, company?: string, level?: string, candidateName?: string) => {
+export const getPromptsForInterview = (topic: string, duration: number=30, company?: string, level?: string, candidateName?: string, focus?: string) => {
   console.log(duration, company, level)
     switch (topic) {
       case 'dsa':
-        return DSA_PROMPT(duration, company, level, candidateName)
+        return DSA_PROMPT(duration, company, level, candidateName, focus)
 
      default:
       return DEFAULT_PROMPT(candidateName);
@@ -210,11 +212,16 @@ export const DSA_PROMPT = (
   duration: number = 30,
   company?: string,
   level?: string,
-  candidateName?: string
+  candidateName?: string,
+  focus?: string
 ) => {
   const nameLine = nameInstruction(candidateName);
 
-  const topic = pickTopicByLevel(level);
+  // A topic the candidate chose wins over the random pick for their level
+  const focusLabel = FOCUS_TOPICS.find((t) => t.key === focus)?.label;
+  const topic = focusLabel
+    ? `${focusLabel} (the candidate chose this focus; the problem you present MUST be mainly about it)`
+    : pickTopicByLevel(level);
   const L = String(level).toLowerCase();
   const difficulty = L.includes("hard")
     ? "hard"

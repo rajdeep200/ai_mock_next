@@ -3,7 +3,7 @@ import Image from "next/image";
 
 export default function HomeFooter() {
   return (
-    <footer>
+    <footer className="site">
       <div className="wrap">
         <div>
           <Link href="/" className="logo">

@@ -58,6 +58,10 @@ export const TOPICS = [
   { key: "other", label: "Other" },
 ] as const;
 
+/** Topics a candidate can pick on the start page ("other" is only a scoring label). */
+export const FOCUS_TOPICS = TOPICS.filter((t) => t.key !== "other");
+export const FOCUS_KEYS = FOCUS_TOPICS.map((t) => t.key) as [string, ...string[]];
+
 /** Opposite pairs: if the model returns both, the evidence is unclear, so both are dropped. */
 export const CONFLICTS: [StrengthKey, IssueKey][] = [
   ["clarifying_questions", "no_clarifying_questions"],
@@ -116,3 +120,32 @@ export function quoteIsGenuine(quote: string, candidateSpeech: string[]): boolea
   if (q.split(" ").length < 3) return false; // too short to mean anything
   return candidateSpeech.some((m) => norm(m).includes(q));
 }
+
+/** What to do about each recurring mistake: the "Instead" tip and the title of the matching practice step. */
+export const ISSUE_FIX: Record<IssueKey | "many_hints" | "went_quiet", { title: string; tip: string }> = {
+  no_clarifying_questions: { title: "Ask before you solve", tip: "Spend the first minute asking about input size, duplicates, sorted or not, and what to return when there is no answer." },
+  coded_before_plan: { title: "Plan out loud before coding", tip: "Say your approach in 2 or 3 sentences and let the interviewer agree before you write the first line." },
+  brute_force_only: { title: "Push past brute force", tip: "After the simple solution, ask yourself what work repeats, and look for a map, sort or two pointers to remove it." },
+  no_complexity_analysis: { title: "Practice complexity analysis", tip: "As soon as you finish your approach, say \"this is O(n) time and O(n) space because…\" before you start coding." },
+  wrong_complexity: { title: "Sharpen your complexity analysis", tip: "Count the loops and what each one touches, and remember that hash map and sort costs add up." },
+  no_edge_cases: { title: "Build an edge-case habit", tip: "Before you say done, test an empty input, a single item, duplicates, and the largest input." },
+  no_dry_run: { title: "Trace your code before finishing", tip: "Walk through your code line by line on a small example out loud, and watch for off-by-one mistakes." },
+  bugs_in_code: { title: "Write cleaner first drafts", tip: "Code slowly from your plan, then re-read each line against your example to catch mistakes before the interviewer does." },
+  messy_code: { title: "Write readable code", tip: "Use descriptive names, small helper steps and consistent structure, since an interviewer reads your code like a teammate would." },
+  unclear_explanation: { title: "Make your explanations clearer", tip: "Use a simple shape: the idea, a small example, then the steps. Pause to check the interviewer is following." },
+  ignored_feedback: { title: "Act on hints quickly", tip: "When the interviewer nudges you, repeat it back in your own words and try it right away, even if you're not sure." },
+  gives_up_quickly: { title: "Keep trying when stuck", tip: "Instead of saying \"I don't know\", say what you do know and try the simplest idea, even if it is slow." },
+  poor_time_management: { title: "Pace the interview", tip: "Aim for about 5 minutes to understand, 10 to plan, 15 to code and 5 to test, and move on when you are over." },
+  many_hints: { title: "Rely less on hints", tip: "When stuck, talk through what you've tried and what would help before you ask for a nudge." },
+  went_quiet: { title: "Think out loud", tip: "Even half-formed thoughts help: \"I'm considering a hash map, but checking if it fits…\"." },
+};
+
+/** Fallback advice per skill, used before there is enough tag data. */
+export const SKILL_FIX: Record<string, { title: string; tip: string }> = {
+  understanding: { title: "Understand the problem first", tip: "Restate the problem in your own words and ask about constraints before you start." },
+  approach: { title: "Strengthen your approach", tip: "Start with a simple solution, say why it is slow, and look for the repeated work to remove." },
+  complexity: ISSUE_FIX.no_complexity_analysis,
+  code: { title: "Improve your code", tip: "Write from a clear plan, use meaningful names, and re-read your code before you finish." },
+  edge_cases: ISSUE_FIX.no_edge_cases,
+  communication: { title: "Communicate more clearly", tip: "Think out loud and structure explanations as idea, example, steps." },
+};

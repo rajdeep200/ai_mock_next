@@ -5,6 +5,8 @@ const InterviewSessionSchema = new mongoose.Schema(
     userId: { type: String, required: true },
     technology: { type: String, required: true },
     company: { type: String },
+    // Optional topic the candidate asked to practise (a key from FOCUS_TOPICS in lib/insights.ts)
+    focus: { type: String, default: "" },
     level: { type: String, required: true },
     duration: { type: Number, required: true }, // in minutes
     status: {

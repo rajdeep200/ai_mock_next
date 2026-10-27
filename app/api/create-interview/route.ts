@@ -4,6 +4,7 @@ import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
 import { checkCanStartInterview, recordInterviewStart } from "@/lib/usage";
 import { z } from "zod";
+import { FOCUS_KEYS } from "@/lib/insights";
 
 const createInterviewSchema = z
   .object({
@@ -22,6 +23,7 @@ const createInterviewSchema = z
       required_error: "Level required",
       invalid_type_error: "level must be one of easy | medium | hard",
     }),
+    focus: z.enum(FOCUS_KEYS).optional(),
     duration: z.coerce
       .number()
       .int("duration must be an integer (minutes)")
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Parse & validate body
-  const { technology, company, level, duration } = parsedBody;
+  const { technology, company, level, duration, focus } = parsedBody;
 
   try {
     // 3. Connect to DB
@@ -90,6 +92,7 @@ export async function POST(req: NextRequest) {
       technology,
       company: company || "",
       level,
+      focus: focus ?? "",
       duration,
       status: "active",
     });

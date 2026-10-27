@@ -1,296 +1,240 @@
-// app/billing/return/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+// One screen for every outcome of a checkout: confirming, paid, failed, or still waiting on the bank.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import {
-    FiCheckCircle,
-    FiXCircle,
-    FiClock,
-    FiArrowRight,
-    FiRefreshCw,
-    FiShield,
-    FiCreditCard,
-} from "react-icons/fi";
+import { PASS_DAYS, PLANS, type PlanId } from "@/lib/plans";
+import { Arrow } from "@/component/home/icons";
 
 type VerifyResp = {
-    ok?: boolean;
-    orderId?: string;
-    status?: string; // "paid" | "failed" | "pending" | "created" | etc.
-    planId?: "starter" | "pro";
-    planLabel?: string;
-    amount?: number;
-    currency?: string;
-    details?: string;
+  ok?: boolean;
+  orderId?: string;
+  status?: string; // "paid" | "failed" | "pending" | "created" | "unknown" ...
+  planId?: "starter" | "pro";
+  planLabel?: string;
+  amount?: number;
+  currency?: string;
+  paidAt?: string | null;
+  details?: string;
 };
 
-const STATUS_COPY: Record<
-    "success" | "failed" | "pending" | "unknown",
-    { title: string; subtitle: string; icon: any }
-> = {
-    success: {
-        title: "Payment Successful",
-        subtitle:
-            "Your subscription is active. You can start using your new plan right away.",
-        icon: <FiCheckCircle className="text-emerald-400" size={28} />,
-    },
-    failed: {
-        title: "Payment Failed",
-        subtitle:
-            "Looks like the payment didn’t go through. You can try again or use a different method.",
-        icon: <FiXCircle className="text-red-400" size={28} />,
-    },
-    pending: {
-        title: "Payment Pending",
-        subtitle:
-            "We’re still waiting for confirmation from the payment provider. This usually resolves in a few seconds.",
-        icon: <FiClock className="text-yellow-400" size={28} />,
-    },
-    unknown: {
-        title: "We’re Checking Your Payment",
-        subtitle:
-            "We couldn’t determine the final status yet. Please wait a moment or refresh.",
-        icon: <FiShield className="text-gray-300" size={28} />,
-    },
+type Outcome = "success" | "failed" | "waiting";
+type Phase = "checking" | "success" | "failed" | "slow";
+
+const POLL_MS = 3000;
+const MAX_POLLS = 15; // about 45 seconds, then we say it is taking long
+
+const outcomeOf = (status?: string): Outcome => {
+  const s = (status || "").toLowerCase();
+  if (["paid", "success", "completed", "captured"].some((k) => s.includes(k))) return "success";
+  if (["failed", "cancelled", "canceled"].some((k) => s.includes(k))) return "failed";
+  return "waiting";
 };
 
-function StatusBadge({ status }: { status: "success" | "failed" | "pending" | "unknown" }) {
-    const color =
-        status === "success"
-            ? "text-emerald-300 border-emerald-500/40 bg-emerald-500/10"
-            : status === "failed"
-                ? "text-red-300 border-red-500/40 bg-red-500/10"
-                : status === "pending"
-                    ? "text-yellow-200 border-yellow-500/40 bg-yellow-500/10"
-                    : "text-gray-300 border-gray-500/40 bg-gray-700/20";
+const money = (amount?: number, currency?: string) => {
+  if (amount == null) return "";
+  const n = amount.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  return !currency || currency === "INR" ? `₹${n}` : `${currency} ${n}`;
+};
 
-    return (
-        <span
-            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs ${color}`}
-        >
-            <span className="block h-2 w-2 rounded-full bg-current opacity-80" />
-            {status.toUpperCase()}
-        </span>
-    );
-}
+const when = (iso?: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })
+    : "";
 
-export default function BillingReturnPage() {
-    const sp = useSearchParams();
-    const router = useRouter();
-    const orderId = sp.get("order_id") || sp.get("orderId") || "";
+const Check = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 13l4 4L19 7" />
+  </svg>
+);
 
-    const [loading, setLoading] = useState(true);
-    const [resp, setResp] = useState<VerifyResp | null>(null);
-    const [error, setError] = useState<string | null>(null);
+export default function PaymentStatus() {
+  const sp = useSearchParams();
+  const orderId = sp.get("order_id") || sp.get("orderId") || "";
 
-    // Poll for up to ~45s if we're pending/unknown to allow webhook to arrive
-    const pollingRef = useRef<number>(0);
+  const [resp, setResp] = useState<VerifyResp | null>(null);
+  const [phase, setPhase] = useState<Phase>("checking");
+  const [problem, setProblem] = useState<string | null>(null);
+  const polls = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const canonical: "success" | "failed" | "pending" | "unknown" = useMemo(() => {
-        const s = (resp?.status || "").toLowerCase();
-        if (["paid", "success", "completed", "captured"].some((k) => s.includes(k))) return "success";
-        if (["failed", "cancelled", "canceled"].some((k) => s.includes(k))) return "failed";
-        if (["created", "pending", "authorized", "initiated"].some((k) => s.includes(k))) return "pending";
-        return resp ? "unknown" : "pending";
-    }, [resp]);
+  const verify = useCallback(async () => {
+    if (!orderId) {
+      setProblem("We couldn't find an order number in this link.");
+      setPhase("slow");
+      return;
+    }
+    let outcome: Outcome = "waiting";
+    try {
+      const res = await fetch(`/api/billing/verify?orderId=${encodeURIComponent(orderId)}`, { cache: "no-store" });
+      const data = (await res.json()) as VerifyResp & { error?: string };
+      if (!res.ok) throw new Error(data?.details || data?.error || "Verification failed");
+      setResp(data);
+      setProblem(null);
+      outcome = outcomeOf(data.status);
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : "We couldn't reach the server.");
+    }
 
-    const fetchVerify = async () => {
-        if (!orderId) {
-            setError("No order id found in URL.");
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        setError(null);
-        try {
-            // You’ll implement this endpoint to read Cashfree/DB:
-            // GET /api/billing/verify?orderId=...
-            const res = await fetch(`/api/billing/verify?orderId=${encodeURIComponent(orderId)}`, {
-                cache: "no-store",
-            });
-            const data = (await res.json()) as VerifyResp;
-            if (!res.ok) throw new Error(data?.details || "Verification failed");
-            setResp(data);
-        } catch (e: any) {
-            setError(e?.message || "Something went wrong verifying your payment.");
-        } finally {
-            setLoading(false);
-        }
+    if (outcome === "success") return setPhase("success");
+    if (outcome === "failed") return setPhase("failed");
+
+    // Still waiting: poll for a while (the webhook may arrive any second), then say it is taking long
+    if (polls.current >= MAX_POLLS) return setPhase("slow");
+    polls.current += 1;
+    timer.current = setTimeout(verify, POLL_MS);
+  }, [orderId]);
+
+  useEffect(() => {
+    polls.current = 0;
+    verify();
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
     };
+  }, [verify]);
 
-    useEffect(() => {
-        fetchVerify();
-    }, [orderId]);
+  const checkAgain = () => {
+    if (timer.current) clearTimeout(timer.current);
+    polls.current = 0;
+    setPhase("checking");
+    verify();
+  };
 
-    useEffect(() => {
-        if (!loading && (canonical === "pending" || canonical === "unknown")) {
-            if (pollingRef.current >= 15) return; // ~15 polls * 3s = 45s
-            const t = setTimeout(() => {
-                pollingRef.current += 1;
-                fetchVerify();
-            }, 3000);
-            return () => clearTimeout(t);
-        }
-    }, [loading, canonical]);
+  const planId = (resp?.planId ?? "pro") as PlanId;
+  const plan = PLANS[planId] ?? PLANS.pro;
+  const planName = resp?.planLabel || plan.label;
+  const shownOrder = resp?.orderId || orderId || "";
+  const amount = money(resp?.amount, resp?.currency);
+  const paidAt = when(resp?.paidAt);
 
-    const statusCopy = STATUS_COPY[canonical];
+  const Receipt = ({ status }: { status: React.ReactNode }) => (
+    <dl className="receipt">
+      <div className="row"><dt>Plan</dt><dd>{planName} · {PASS_DAYS} days</dd></div>
+      {shownOrder && <div className="row"><dt>Order ID</dt><dd className="mono">{shownOrder}</dd></div>}
+      {phase === "success" && paidAt && <div className="row"><dt>Paid on</dt><dd>{paidAt}</dd></div>}
+      <div className="row"><dt>Status</dt><dd>{status}</dd></div>
+      {amount && <div className="row total"><dt>Amount</dt><dd>{amount}</dd></div>}
+    </dl>
+  );
 
-    return (
-        <main className="relative min-h-screen bg-black text-white">
-            {/* Ambient background */}
-            <div aria-hidden className="pointer-events-none absolute inset-0">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(34,197,94,.08),transparent_45%),radial-gradient(circle_at_80%_30%,rgba(34,197,94,.06),transparent_40%),radial-gradient(circle_at_40%_80%,rgba(59,130,246,.05),transparent_45%)]" />
-                <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,black_45%,transparent_75%)]">
-                    <div className="h-full w-full bg-[linear-gradient(to_right,rgba(31,41,55,.55)_1px,transparent_1px),linear-gradient(to_bottom,rgba(31,41,55,.55)_1px,transparent_1px)] bg-[size:48px_48px]" />
-                </div>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent,rgba(0,0,0,.7))]" />
+  const perks = [
+    `${plan.monthlyInterviewCap} interviews every month`,
+    `Sessions up to ${plan.maxMinutesPerInterview} minutes`,
+    ...(plan.features.companyPatterns ? ["Company-specific questions"] : []),
+    `Active for ${PASS_DAYS} days`,
+  ];
+
+  return (
+    <main className="page" data-s={phase}>
+      <div className="disc" aria-hidden="true"></div>
+      <div className="wrap">
+        <div className="card" aria-live="polite">
+          {/* CHECKING */}
+          <section className="state st-checking">
+            <div className="top-sec">
+              <div className="badge spin"><div className="spinner"></div></div>
+              <span className="eyebrow"><i></i>Securing your plan</span>
+              <h1><b>Confirming</b> your payment</h1>
+              <p className="lede">This takes a few seconds. We are checking with your bank so your plan switches on the moment it clears.</p>
             </div>
+            <ul className="steps">
+              <li className="done"><span className="dot"></span>Payment sent to Cashfree</li>
+              <li className="now"><span className="dot"></span>Waiting for your bank to confirm</li>
+              <li><span className="dot"></span>Switching on your plan</li>
+            </ul>
+            <div className="bar"><i></i></div>
+            <p className="keep">Please keep this page open. You don&apos;t need to do anything.</p>
+          </section>
 
-            <section className="relative z-10 mx-auto max-w-3xl px-4 sm:px-6 py-14 sm:py-20">
-                {/* Header */}
-                <div className="mb-8 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 grid place-items-center rounded-xl border border-emerald-500/30 bg-emerald-500/10">
-                            <FiCreditCard className="text-emerald-300" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl sm:text-2xl font-semibold">
-                                <span className="bg-gradient-to-r from-emerald-300 via-green-400 to-emerald-200 bg-clip-text text-transparent">
-                                    Billing Status
-                                </span>
-                            </h1>
-                            <p className="text-xs text-gray-400">Secure checkout verification</p>
-                        </div>
-                    </div>
-                    <StatusBadge status={canonical} />
-                </div>
-
-                {/* Card */}
-                <div className="rounded-2xl border border-emerald-500/25 bg-gray-950/70 backdrop-blur ring-1 ring-emerald-500/10 shadow-[0_0_28px_rgba(16,185,129,.15)]">
-                    <div className="border-b border-gray-800 p-5 sm:p-6">
-                        <div className="flex items-start gap-3">
-                            <div className="mt-0.5">{statusCopy.icon}</div>
-                            <div>
-                                <h2 className="text-xl font-semibold text-white">{statusCopy.title}</h2>
-                                <p className="mt-1 text-sm text-gray-300">{statusCopy.subtitle}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-5 sm:p-6">
-                        {/* Loading / Error */}
-                        {loading ? (
-                            <div className="flex items-center gap-3 text-gray-300">
-                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
-                                Checking payment status…
-                            </div>
-                        ) : error ? (
-                            <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-red-200">
-                                {error}
-                            </div>
-                        ) : (
-                            <>
-                                {/* Order snapshot */}
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="rounded-lg border border-gray-800 bg-black/40 p-4">
-                                        <p className="text-xs uppercase tracking-wide text-gray-400">Order ID</p>
-                                        <p className="mt-1 font-mono text-sm text-emerald-300 break-all">
-                                            {resp?.orderId || orderId || "—"}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-lg border border-gray-800 bg-black/40 p-4">
-                                        <p className="text-xs uppercase tracking-wide text-gray-400">Plan</p>
-                                        <p className="mt-1 text-sm text-gray-200">
-                                            {resp?.planLabel
-                                                ? resp.planLabel
-                                                : resp?.planId
-                                                    ? resp.planId.toUpperCase()
-                                                    : "—"}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-lg border border-gray-800 bg-black/40 p-4">
-                                        <p className="text-xs uppercase tracking-wide text-gray-400">Amount</p>
-                                        <p className="mt-1 text-sm text-gray-200">
-                                            {resp?.amount != null && resp?.currency
-                                                ? `${resp.currency} ${resp.amount}`
-                                                : "—"}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-lg border border-gray-800 bg-black/40 p-4">
-                                        <p className="text-xs uppercase tracking-wide text-gray-400">Provider</p>
-                                        <p className="mt-1 text-sm text-gray-200">Cashfree</p>
-                                    </div>
-                                </div>
-
-                                {/* CTA row */}
-                                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-                                    {canonical === "success" && (
-                                        <>
-                                            <Link href="/home" className="group w-full sm:w-auto">
-                                                <button className="cursor-pointer inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white transition hover:bg-emerald-500">
-                                                    Go to App
-                                                    <FiArrowRight className="transition-transform group-hover:translate-x-0.5" />
-                                                </button>
-                                            </Link>
-                                            <Link href="/history" className="w-full sm:w-auto">
-                                                <button className="cursor-pointer inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-5 py-2.5 text-gray-200 transition hover:border-emerald-600/60 hover:bg-gray-900/60">
-                                                    View History
-                                                </button>
-                                            </Link>
-                                        </>
-                                    )}
-
-                                    {canonical === "failed" && (
-                                        <>
-                                            <Link href="/pricing" className="group w-full sm:w-auto">
-                                                <button className="cursor-pointer inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white transition hover:bg-emerald-500">
-                                                    Try Again
-                                                    <FiRefreshCw className="transition-transform group-hover:rotate-12" />
-                                                </button>
-                                            </Link>
-                                            <a
-                                                href="mailto:support@mockqube.com?subject=Payment%20help"
-                                                className="w-full sm:w-auto"
-                                            >
-                                                <button className="cursor-pointer inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-5 py-2.5 text-gray-200 transition hover:border-emerald-600/60 hover:bg-gray-900/60">
-                                                    Contact Support
-                                                </button>
-                                            </a>
-                                        </>
-                                    )}
-
-                                    {canonical === "pending" || canonical === "unknown" ? (
-                                        <>
-                                            <button
-                                                onClick={() => fetchVerify()}
-                                                className="cursor-pointer inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-5 py-2.5 font-semibold text-emerald-200 transition hover:bg-emerald-500/20 sm:w-auto"
-                                            >
-                                                Refresh Status
-                                                <FiRefreshCw />
-                                            </button>
-                                            <Link href="/pricing" className="w-full sm:w-auto">
-                                                <button className="cursor-pointer inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-5 py-2.5 text-gray-200 transition hover:border-emerald-600/60 hover:bg-gray-900/60">
-                                                    Back to Pricing
-                                                </button>
-                                            </Link>
-                                        </>
-                                    ) : null}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                {/* Help note */}
-                <p className="mt-6 text-center text-xs text-gray-400">
-                    If your status doesn’t update after a minute, reach us at{" "}
-                    <a className="text-emerald-300 underline" href="mailto:support@mockqube.com">
-                        support@mockqube.com
-                    </a>
-                    .
-                </p>
+          {/* SUCCESS */}
+          {phase === "success" && (
+            <section className="state st-success">
+              <div className="top-sec">
+                <div className="badge ok"><svg viewBox="0 0 48 48" aria-hidden="true"><path className="draw" d="M12 25l9 9 16-19" /></svg></div>
+                <span className="eyebrow ok"><i></i>Payment successful</span>
+                <h1>You&apos;re on <b>{planName}</b></h1>
+                <p className="lede">Your plan is active right now. Pick up where you left off, or start a fresh interview.</p>
+              </div>
+              <Receipt status={<span className="paid"><Check />Paid via Cashfree</span>} />
+              <div className="block">
+                <h3>What you just unlocked</h3>
+                <ul className="perks">
+                  {perks.map((p) => (
+                    <li key={p}><Check />{p}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="actions">
+                <Link href="/start-interview" className="btn">Start an interview <Arrow /></Link>
+                <Link href="/dashboard" className="btn ghost">Go to dashboard</Link>
+              </div>
             </section>
-        </main>
-    );
+          )}
+
+          {/* FAILED */}
+          {phase === "failed" && (
+            <section className="state st-failed">
+              <div className="top-sec">
+                <div className="badge bad">
+                  <svg viewBox="0 0 48 48" aria-hidden="true"><path className="draw" d="M14 14l20 20" /><path className="draw2" d="M34 14L14 34" /></svg>
+                </div>
+                <span className="eyebrow bad"><i></i>Payment failed</span>
+                <h1>That payment <b>didn&apos;t go through</b></h1>
+                <p className="lede">Nothing changed on your account, and you can try again whenever you like.</p>
+              </div>
+              <Receipt status={<span className="failed-tag">Not completed</span>} />
+              <div className="note safe">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" /><path d="M9 12l2 2 4-4" /></svg>
+                <span><b>You haven&apos;t been given a plan for this order.</b> If your bank shows a debit, it is usually reversed automatically within 5 to 7 working days.</span>
+              </div>
+              <div className="block">
+                <h3>Common reasons</h3>
+                <ul className="reasons">
+                  <li><i>1</i><div><b>Your bank declined it</b><span>Check the card limit, or try UPI or a different card.</span></div></li>
+                  <li><i>2</i><div><b>The session timed out</b><span>Entering the OTP too late cancels the payment.</span></div></li>
+                  <li><i>3</i><div><b>You cancelled on the payment page</b><span>No problem, just start again from pricing.</span></div></li>
+                </ul>
+              </div>
+              <div className="actions">
+                <Link href="/pricing" className="btn">Try again <Arrow /></Link>
+                <a href={`mailto:support@mockqube.com?subject=Payment%20help${shownOrder ? `%20-%20${encodeURIComponent(shownOrder)}` : ""}`} className="btn ghost">Contact support</a>
+              </div>
+            </section>
+          )}
+
+          {/* STILL WAITING */}
+          {phase === "slow" && (
+            <section className="state st-slow">
+              <div className="top-sec">
+                <div className="badge wait"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="16" /><path d="M24 15v10l6 4" /></svg></div>
+                <span className="eyebrow wait"><i></i>Still confirming</span>
+                <h1>This is taking <b>longer than usual</b></h1>
+                <p className="lede">
+                  {problem && !resp
+                    ? problem
+                    : "Your bank hasn't confirmed yet. Don't pay again. Check back in a minute and your plan switches on as soon as it clears."}
+                </p>
+              </div>
+              {(shownOrder || amount) && <Receipt status={<span style={{ color: "#B36F00" }}>Waiting for the bank</span>} />}
+              <div className="note warn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 17h.01" /><circle cx="12" cy="12" r="9" /></svg>
+                <span><b>If money was debited,</b> it is safe. Keep the order ID above and write to us if your plan isn&apos;t active within an hour.</span>
+              </div>
+              <div className="actions">
+                <button type="button" className="btn" onClick={checkAgain}>
+                  Check again
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>
+                </button>
+                <a href={`mailto:support@mockqube.com?subject=Payment%20help${shownOrder ? `%20-%20${encodeURIComponent(shownOrder)}` : ""}`} className="btn ghost">Contact support</a>
+              </div>
+            </section>
+          )}
+        </div>
+        <p className="help">
+          Need help with a payment? Write to <a href="mailto:support@mockqube.com">support@mockqube.com</a> with your order ID.
+        </p>
+      </div>
+    </main>
+  );
 }

@@ -33,7 +33,7 @@ export default function Plans() {
             <span className="price">₹0<small> /month</small></span>
             <p className="limits">2 interviews · 15 minutes each</p>
             <p className="per"></p>
-            <Link href="/home" className="btn ghost">Start practicing free <Arrow /></Link>
+            <Link href="/dashboard" className="btn ghost">Start practicing free <Arrow /></Link>
           </article>
 
           <article className="tier">

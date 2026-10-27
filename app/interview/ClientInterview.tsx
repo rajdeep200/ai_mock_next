@@ -939,7 +939,7 @@ export default function InterviewPage() {
       <SignedIn>
         {/* ---- Top bar ---- */}
         <header className="bar">
-          <Link href="/home" className="logo" aria-label="MockQube">
+          <Link href="/dashboard" className="logo" aria-label="MockQube">
             <Image src="/mockqubelogo.png" alt="" width={24} height={28} priority />
             MockQube
           </Link>

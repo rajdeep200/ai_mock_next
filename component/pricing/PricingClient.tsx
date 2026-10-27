@@ -194,7 +194,7 @@ export default function PricingClient() {
   };
 
   const freeCta = !signedIn ? (
-    <SignInButton forceRedirectUrl="/home">
+    <SignInButton forceRedirectUrl="/dashboard">
       <button className="btn ghost" type="button">Start free</button>
     </SignInButton>
   ) : (

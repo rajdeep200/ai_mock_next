@@ -83,7 +83,7 @@ export default function Header() {
             </SignedIn>
 
             <SignedOut>
-              <SignInButton forceRedirectUrl="/home">
+              <SignInButton forceRedirectUrl="/dashboard">
                 <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-700/80 bg-gray-900/60 text-gray-200 hover:border-emerald-600/60 hover:text-white hover:shadow-[0_0_24px_rgba(16,185,129,.15)] transition">
                   <FiLogIn size={18} />
                   <span>Sign in</span>
@@ -160,7 +160,7 @@ export default function Header() {
                   <MobileItem href="/pricing" onClick={() => setOpen(false)}>
                     Pricing
                   </MobileItem>
-                  <SignInButton forceRedirectUrl="/home" mode="modal">
+                  <SignInButton forceRedirectUrl="/dashboard" mode="modal">
                     <button
                       onClick={() => setOpen(false)}
                       className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-gray-800/80 bg-gray-900/70 text-gray-200 hover:border-emerald-600/50 hover:text-white transition"

@@ -18,12 +18,12 @@ export default function HomeHeader() {
           <Link href="/history">History</Link>
           <a href="#faq">FAQ</a>
           <SignedOut>
-            <SignInButton forceRedirectUrl="/home">
+            <SignInButton forceRedirectUrl="/dashboard">
               <button className="btn">Sign in</button>
             </SignInButton>
           </SignedOut>
           <SignedIn>
-            <Link href="/home" className="btn">Start session</Link>
+            <Link href="/dashboard" className="btn">Start session</Link>
             <UserButton />
           </SignedIn>
         </nav>

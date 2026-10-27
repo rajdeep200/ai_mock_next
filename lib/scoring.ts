@@ -3,6 +3,7 @@
 // the percentage is computed here, in code, so it doesn't depend on the model's mood or output format.
 import OpenAI from "openai";
 import { FEEDBACK_FAILED, FEEDBACK_NO_ANSWERS } from "@/lib/interview";
+import { DIMENSIONS, type DimensionKey } from "@/lib/dimensions";
 import {
   INSIGHTS_VERSION,
   ISSUE_KEYS,
@@ -22,16 +23,7 @@ import {
 
 type Msg = { role: "user" | "assistant" | "system"; content: string; at?: Date | string };
 
-export const DIMENSIONS = [
-  { key: "understanding", label: "Problem understanding & clarifying questions", weight: 15 },
-  { key: "approach", label: "Approach & correctness", weight: 30 },
-  { key: "complexity", label: "Complexity analysis", weight: 20 },
-  { key: "code", label: "Code quality & implementation", weight: 15 },
-  { key: "edge_cases", label: "Edge cases & testing", weight: 10 },
-  { key: "communication", label: "Communication", weight: 10 },
-] as const;
-
-type DimensionKey = (typeof DIMENSIONS)[number]["key"];
+export { DIMENSIONS };
 
 type Evaluation = {
   enough_signal: boolean;

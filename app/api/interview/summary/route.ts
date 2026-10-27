@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       },
       { $set: { summaryLockAt: now } },
       { new: true, projection: { transcript: 1, endTime: 1 } }
-    ).lean<{ transcript?: { role: "user" | "assistant" | "system"; content: string }[]; endTime?: Date }>();
+    ).lean<{ transcript?: { role: "user" | "assistant" | "system"; content: string; at?: Date }[]; endTime?: Date }>();
     if (!locked) {
       return NextResponse.json({ error: "Feedback is already being generated.", code: "IN_PROGRESS" }, { status: 409 });
     }
@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
           feedback: result.feedback,
           modelPreparationPercent: result.percent,
           scoreBreakdown: result.breakdown,
+          insights: result.insights,
           feedbackGenerated: generated,
           summaryLockAt: null,
           ...(result.usage ? { "usage.scoreModel": result.usage.model } : {}),

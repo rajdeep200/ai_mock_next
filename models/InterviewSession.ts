@@ -43,6 +43,8 @@ const InterviewSessionSchema = new mongoose.Schema(
     feedbackGenerated: { type: Boolean, default: false }, // the real AI feedback exists (placeholders don't count)
     summaryLockAt: { type: Date, default: null }, // set while feedback is being generated
     scoreBreakdown: { type: mongoose.Schema.Types.Mixed, default: null }, // per-dimension rubric scores
+    // Structured assessment for the progress dashboard (tags, topic, timeline); see lib/insights.ts
+    insights: { type: mongoose.Schema.Types.Mixed, default: null },
     // What this interview cost us: raw counts, priced in lib/cost.ts
     usage: {
       turnCalls: { type: Number, default: 0 },

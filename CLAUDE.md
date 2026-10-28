@@ -63,22 +63,23 @@ were replaced by `/api/interview/turn`). `lib/crypto.ts` still exists but nothin
 ### Routing (App Router, `app/`)
 - Public marketing: `/`, `/about`, `/pricing`, `/contact`, `/mock-interview`, `/blog/*` (MDX/TSX),
   `/privacy-policy`, `/terms`, `/refund-policy`. `/home` is the signed-in launchpad.
-- **Auth-gated pages** (`middleware.ts` `isProtectedRoute`): `/home`, `/dashboard`, `/start-interview`,
-  `/interview(.*)`, `/billing(.*)`. `/history` and `/sessions/[id]` are not in the matcher but their APIs
-  require auth. New authenticated-only pages must be added to that matcher.
+- **Auth-gated pages** (`middleware.ts` `isProtectedRoute`): `/home`, `/dashboard`, `/history`, `/start-interview`,
+  `/interview(.*)`, `/billing(.*)`. `/sessions(.*)` is also protected. New authenticated-only pages must be added to that matcher.
 - `component/ChromeGate.tsx` hides the global Header/Footer on pages that ship their own chrome
-  (`/`, `/home`, `/dashboard`, `/billing/return`, `/pricing`, `/start-interview`, `/interview`,
+  (`/`, `/home`, `/dashboard`, `/history`, `/sessions/*`, `/billing/return`, `/pricing`, `/start-interview`, `/interview`,
   `/interview/feedback`). Add new self-chromed pages to its list.
 - **Interview flow**: `/start-interview` (company, level easy|medium|hard, duration, optional focus topic)
   → POST `/api/create-interview` → `/interview?sessionId=…&technology=dsa&company=…&level=…&duration=…`
   → on end POST `/api/interview/summary` → `/interview/feedback?sessionId=…` (rating form posts to
   `/api/feedback`, then redirects to `/history`).
-- **History/detail**: `/history` (list via `/api/sessions`), `/sessions/[id]` (detail + share toggle via
+- **History/detail**: `/history` (redesigned: month-grouped list with score rings and filters, via `/api/sessions`, which returns `percent`, `title`, `endedEarly` and never the transcript), `/sessions/[id]` (redesigned report: score ring, per-skill breakdown, parsed strengths/improvements, tags, timeline, ShareCard; reads `percent`, `breakdown`, `insights`, `endedEarly` from
   `/api/sessions/[id]`, `/api/sessions/[id]/share`).
 - **Progress dashboard**: `/dashboard` (server component → `lib/dashboard-data.ts` `loadDashboard` →
   `component/dashboard/DashboardClient.tsx` + `charts.tsx`). Signed-in users land here.
-- **Public share pages**: `/s/[slug]` reads `/api/share-public/[slug]`; `/api/og/session/[slug]` renders an
-  OG image (edge runtime, `ImageResponse`).
+- **Public share pages**: `/s/[slug]` (redesigned server component that reads the session directly: score ring,
+  skill scores, the AI summary parsed via `lib/feedback.ts`, share buttons, sign-up band; it never shows the
+  candidate's own words or a name). `/api/og/session/[slug]` renders the 1200x630 link image (edge runtime,
+  Satori: the score ring is an inline SVG data URI and the font is the default) from `/api/share-public/[slug]`.
 - **Billing**: `/pricing` → POST `/api/checkout` → Cashfree hosted checkout → `/billing/return` (neutral
   landing, polls GET `/api/billing/verify?orderId=…`) and `/billing/success`.
 - **Invites/referrals**: `/invite/[token]` → POST `/api/invites/redeem`; admin-only POST `/api/admin/invites`.

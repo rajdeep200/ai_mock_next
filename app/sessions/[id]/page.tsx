@@ -1,19 +1,35 @@
 // app/sessions/[id]/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useAuth, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
-import { useRouter, useParams } from "next/navigation";
-import {
-  FiArrowLeft,
-  FiClock,
-  FiCheckCircle,
-  FiAlertCircle,
-  FiCopy,
-  FiCheck,
-  FiPlayCircle,
-} from "react-icons/fi";
-import { ShareInterview } from "@/component/ShareInterview";
+import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import "./session.css";
+import "@/app/interview/feedback/feedback.css"; // styles for ShareCard
+import AppHeader from "@/component/home/AppHeader";
+import HomeFooter from "@/component/home/HomeFooter";
+import ShareCard from "@/component/feedback/ShareCard";
+import { Arrow } from "@/component/home/icons";
+import { READY_PERCENT } from "@/lib/dashboard";
+import { parseFeedback } from "@/lib/feedback";
+import { FEEDBACK_FAILED, FEEDBACK_NO_ANSWERS } from "@/lib/interview";
+import { ISSUE_TAGS, STRENGTH_TAGS, type SessionInsights } from "@/lib/insights";
+
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["300", "500", "700"],
+  variable: "--font-bricolage",
+  display: "swap",
+});
+
+const figtree = Figtree({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-figtree",
+  display: "swap",
+});
 
 interface SessionDetail {
   id: string;
@@ -23,248 +39,294 @@ interface SessionDetail {
   duration: number;
   status: "active" | "completed" | string;
   createdAt: string;
-  summary?: string;
-  feedback?: string;
+  summary?: string | null;
+  feedback?: string | null;
   shareEnabled?: boolean;
   shareUrl?: string | null;
+  percent: number | null;
+  breakdown: { key: string; label: string; weight: number; score: number | null; evidence: string }[] | null;
+  insights: SessionInsights | null;
+  feedbackGenerated: boolean;
+  endedEarly: boolean;
+}
+
+const scoreClass = (p: number) => (p >= READY_PERCENT ? "ready" : p >= 50 ? "mid" : "low");
+const scoreNote = (p: number) => (p >= READY_PERCENT ? "Interview-ready" : p >= 50 ? "Getting there" : "Needs practice");
+const barClass = (s: number) => (s >= 7 ? "hi" : s <= 4 ? "lo" : "");
+
+// Title with its last words in bold, like the other redesigned headings
+function Title({ text }: { text: string }) {
+  const words = text.split(/\s+/);
+  const cut = words.length > 3 ? words.length - 2 : words.length > 1 ? words.length - 1 : 0;
+  return (
+    <>
+      {words.slice(0, cut).join(" ")}{cut > 0 ? " " : ""}<b>{words.slice(cut).join(" ")}</b>
+    </>
+  );
+}
+
+const strengthLabel = (k: string) => STRENGTH_TAGS.find((t) => t.key === k)?.label ?? k;
+const issueLabel = (k: string) => ISSUE_TAGS.find((t) => t.key === k)?.label ?? k;
+
+function Note({ title, body, icon }: { title: string; body: string; icon: "info" | "clock" }) {
+  return (
+    <div className="note">
+      <span className="ico">
+        {icon === "clock" ? (
+          <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+        ) : (
+          <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+        )}
+      </span>
+      <div>
+        <h2>{title}</h2>
+        <p>{body}</p>
+      </div>
+      <div className="acts">
+        <Link href="/start-interview" className="btn">Start Interview <Arrow /></Link>
+      </div>
+    </div>
+  );
 }
 
 export default function SessionDetailsPage() {
-  const { getToken, isSignedIn } = useAuth();
-  const router = useRouter();
+  const { isSignedIn } = useAuth();
   const { id } = useParams() as { id: string };
 
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState<"summary" | "feedback" | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!isSignedIn) return;
 
     (async () => {
       try {
-        const token = await getToken();
-        const res = await fetch(`/api/sessions/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(`/api/sessions/${id}`, { cache: "no-store" });
         if (res.ok) {
           const data = (await res.json()) as { session: SessionDetail };
-          console.log('session data -->> ', data)
           setSession(data.session);
-        } else {
-          console.error("Failed to load session");
         }
       } catch (err) {
-        console.error(err);
+        console.error("Could not load session", err);
       } finally {
         setLoading(false);
       }
     })();
-  }, [id, isSignedIn, getToken]);
+  }, [id, isSignedIn]);
 
-  const goBack = () => router.push("/history");
+  const parsed = useMemo(() => parseFeedback(session?.feedback), [session?.feedback]);
 
-  const copyText = async (text: string, which: "summary" | "feedback") => {
+  const copyFeedback = async () => {
+    if (!session?.feedback) return;
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(which);
-      setTimeout(() => setCopied(null), 1200);
-    } catch { }
+      await navigator.clipboard.writeText(session.feedback);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch { /* clipboard blocked: nothing to do */ }
   };
 
-  const StatusBadge = ({ status }: { status: SessionDetail["status"] }) => {
-    const completed = status === "completed";
+  const renderBody = (s: SessionDetail) => {
+    const level = (s.level || "").toLowerCase();
+    const title = s.insights?.problem?.title || (s.technology.toLowerCase() === "dsa" ? "Mock interview" : `${s.technology} mock interview`);
+    const d = new Date(s.createdAt);
+    const when = `${d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+    const scored = s.status === "completed" && s.percent !== null;
+
+    const chips = (
+      <div className="tags">
+        {s.status === "active" ? <span className="chip live">In progress</span> : s.endedEarly ? <span className="chip early">Ended early</span> : <span className="chip ok">Completed</span>}
+        <span className={`chip${["easy", "medium", "hard"].includes(level) ? ` ${level}` : " plain"}`}>{level ? level.charAt(0).toUpperCase() + level.slice(1) : "Level"}</span>
+        {s.company && <span className="chip plain">{s.company}</span>}
+      </div>
+    );
+    const meta = (
+      <div className="meta">{when}<i></i>{s.duration} min<i></i>{s.technology.toUpperCase()}</div>
+    );
+
+    // No report to show: explain why
+    if (!scored) {
+      const note =
+        s.status === "active"
+          ? { icon: "clock" as const, title: "This interview hasn't finished", body: "Its time has run out, but it was never closed. Start a new one to get a scored report." }
+          : s.endedEarly
+            ? { icon: "info" as const, title: "This interview ended early", body: "The page was closed or refreshed before the interview finished, so there's no feedback for this one." }
+            : s.feedback === FEEDBACK_FAILED
+              ? { icon: "info" as const, title: "We couldn't generate feedback", body: "Something went wrong while scoring this interview. Your next one will be scored normally." }
+              : { icon: "info" as const, title: "There wasn't enough to score", body: s.feedback === FEEDBACK_NO_ANSWERS ? "The interview ended before any answers were recorded, so no preparation percentage was given." : "The conversation didn't reach enough technical answers for a fair score. A session with a coding attempt is enough to get one." };
+      return (
+        <>
+          <section className="hero">
+            <div>
+              {chips}
+              <h1><Title text={title} /></h1>
+              {meta}
+            </div>
+            <div className="big-ring none"><div><b>Not scored</b></div></div>
+          </section>
+          <Note {...note} />
+        </>
+      );
+    }
+
+    const percent = s.percent as number;
+    const ins = s.insights;
+    const hasBreakdown = !!s.breakdown?.some((x) => x.score !== null);
+    const hasLists = parsed.strengths.length > 0 || parsed.improvements.length > 0;
+    const doNext = ins?.doNextTime || parsed.next;
+    let n = 0;
+
     return (
-      <span
-        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium 
-        border backdrop-blur
-        ${completed
-            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-            : "border-yellow-500/40 bg-yellow-500/10 text-yellow-200"}`}
-      >
-        {completed ? <FiCheckCircle /> : <FiAlertCircle />}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
+      <>
+        <section className="hero">
+          <div>
+            {chips}
+            <h1><Title text={title} /></h1>
+            {meta}
+            <div className="acts">
+              <Link href="/start-interview" className="btn">Start Interview <Arrow /></Link>
+              {s.feedback && <button type="button" className="btn ghost" onClick={copyFeedback}>{copied ? "Copied" : "Copy feedback"}</button>}
+            </div>
+          </div>
+          <div className={`big-ring ${scoreClass(percent)}`} style={{ ["--p" as string]: percent }} role="img" aria-label={`Score ${percent} percent, ${scoreNote(percent)}`}>
+            <div><b>{percent}<em>%</em></b><span>{scoreNote(percent)}</span></div>
+          </div>
+        </section>
+
+        <div className="stack">
+          {parsed.summary && (
+            <section className="card">
+              <div className="card-h"><span className="num">{++n}</span><h2>Summary</h2></div>
+              <p className="summary">{parsed.summary}</p>
+            </section>
+          )}
+
+          {hasBreakdown && (
+            <section className="card">
+              <div className="card-h"><span className="num">{++n}</span><h2>Score breakdown</h2><span className="sub">Weighted across six skills</span></div>
+              <div className="dims">
+                {s.breakdown!.map((x) => (
+                  <div className="dim" key={x.key}>
+                    <b>{x.label.split(" & ")[0]}</b>
+                    <div className="bar"><i className={x.score === null ? undefined : barClass(x.score)} style={{ width: `${(x.score ?? 0) * 10}%` }}></i></div>
+                    {x.score === null ? <div className="sc"><span className="na">n/a</span></div> : <div className="sc">{x.score}<small>/10</small></div>}
+                    {x.evidence && <q>{x.evidence}</q>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {hasLists && (
+            <div className="two">
+              <section className="card">
+                <div className="card-h"><span className="num">{++n}</span><h2>What went well</h2></div>
+                <ul className="list good">
+                  {parsed.strengths.map((t, i) => <li key={i}><span aria-hidden="true">✓</span><div>{t}</div></li>)}
+                </ul>
+                {ins && ins.strengths.length > 0 && (
+                  <div className="tagrow">{ins.strengths.map((x) => <span key={x.tag} className="chip g">{strengthLabel(x.tag)}</span>)}</div>
+                )}
+              </section>
+              <section className="card">
+                <div className="card-h"><span className="num">{++n}</span><h2>Work on next</h2></div>
+                <ul className="list fix">
+                  {parsed.improvements.map((t, i) => <li key={i}><span aria-hidden="true">!</span><div>{t}</div></li>)}
+                </ul>
+                {ins && ins.issues.length > 0 && (
+                  <div className="tagrow">{ins.issues.map((x) => <span key={x.tag} className="chip w">{issueLabel(x.tag)}</span>)}</div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {!hasLists && !parsed.summary && s.feedback && (
+            <section className="card">
+              <div className="card-h"><span className="num">{++n}</span><h2>Feedback</h2></div>
+              <p className="summary">{s.feedback}</p>
+            </section>
+          )}
+
+          {doNext && (
+            <section className="card next">
+              <div>
+                <span className="eyebrow"><i></i>Do this next time</span>
+                <h2>{doNext}</h2>
+              </div>
+              <Link href="/start-interview" className="btn sun">Practice again <Arrow /></Link>
+            </section>
+          )}
+
+          {ins && ins.timeline.length > 0 && (
+            <section className="card">
+              <div className="card-h">
+                <span className="num">{++n}</span><h2>How the interview went</h2>
+                {ins.hintsGiven > 0 && <span className="sub">{ins.hintsGiven} {ins.hintsGiven === 1 ? "hint" : "hints"} given</span>}
+              </div>
+              <ol className="tl">
+                {ins.timeline.map((t, i) => (
+                  <li key={i} className={t.kind === "neutral" ? undefined : t.kind}>
+                    <time>{t.fromMin}–{t.toMin} min</time>
+                    <span className="dot"><i></i></span>
+                    <p>{t.summary}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+
+          <div className="share-wrap mqf">
+            <ShareCard sessionId={s.id} initialEnabled={!!s.shareEnabled} initialUrl={s.shareUrl ?? null} score={percent} />
+          </div>
+        </div>
+      </>
     );
   };
 
   return (
-    <>
+    <div className={`mqs ${bricolage.variable} ${figtree.variable}`}>
       <SignedIn>
-        <main className="relative min-h-screen overflow-hidden bg-black text-white">
-          {/* Background */}
-          <div aria-hidden className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(34,197,94,.08),transparent_45%),radial-gradient(circle_at_80%_28%,rgba(34,197,94,.06),transparent_40%),radial-gradient(circle_at_50%_85%,rgba(59,130,246,.055),transparent_45%)]" />
-            <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,black_45%,transparent_80%)]">
-              <div className="h-full w-full bg-[linear-gradient(to_right,rgba(31,41,55,.55)_1px,transparent_1px),linear-gradient(to_bottom,rgba(31,41,55,.55)_1px,transparent_1px)] bg-[size:48px_48px]" />
-            </div>
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent,rgba(0,0,0,.7))]" />
-            <div className="absolute inset-0 opacity-[.12] mix-blend-soft-light bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(255,255,255,.06)_3px,rgba(255,255,255,.06)_3px)] animate-scan" />
-          </div>
+        <AppHeader active="history" />
+        <main className="page">
+          <div className="disc" aria-hidden="true"></div>
+          <div className="wrap">
+            <Link href="/history" className="back"><Arrow />All interviews</Link>
 
-          {/* Top bar */}
-          <div className="relative z-10 px-4 pt-6 sm:pt-8">
-            <button
-              onClick={goBack}
-              className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-300 backdrop-blur transition hover:border-emerald-500/70 hover:text-emerald-200"
-            >
-              <FiArrowLeft />
-              Back to History
-            </button>
-          </div>
-
-          {/* Content */}
-          <section className="relative z-10 mx-auto max-w-5xl px-4 py-10 sm:py-14">
             {loading ? (
-              <div className="space-y-6">
-                {/* shimmer skeletons */}
-                <div className="h-24 w-full animate-pulse rounded-3xl bg-gray-900/60" />
-                <div className="h-40 w-full animate-pulse rounded-3xl bg-gray-900/60" />
-                <div className="h-40 w-full animate-pulse rounded-3xl bg-gray-900/60" />
+              <div aria-busy="true" aria-label="Loading interview">
+                <div className="sk" style={{ height: 260, borderRadius: 36 }}></div>
+                <div className="sk"></div>
+                <div className="sk"></div>
               </div>
             ) : session ? (
-              <div className="space-y-8">
-                {/* Header card */}
-                <div className="rounded-3xl border border-emerald-700/40 bg-gradient-to-br from-gray-950/80 via-gray-900/60 to-black/80 p-6 sm:p-8 shadow-[0_0_60px_rgba(34,197,94,.15)] backdrop-blur">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
-                        <span className="text-emerald-400">
-                          {session.technology.toUpperCase()}
-                        </span>{" "}
-                        • {session.level}
-                      </h1>
-                      <p className="mt-1 text-sm text-gray-300">
-                        {session.company ? `Company: ${session.company}` : "General practice"}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge status={session.status} />
-                      <span className="inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-900/60 px-3 py-1 text-xs text-gray-300">
-                        <FiClock className="text-emerald-300" />
-                        {session.duration} min
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Meta chips */}
-                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4">
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Session ID</p>
-                      <p className="mt-1 truncate text-sm text-gray-200">{session.id}</p>
-                    </div>
-                    <div className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4">
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Started</p>
-                      <p className="mt-1 text-sm text-gray-200">
-                        {new Date(session.createdAt).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4">
-                      <p className="text-xs uppercase tracking-wide text-gray-400">Mode</p>
-                      <p className="mt-1 text-sm text-gray-200">Voice + Chat</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                {session.summary && (
-                  <div className="rounded-3xl border border-emerald-700/40 bg-gray-900/60 p-6 sm:p-7 backdrop-blur hover:border-emerald-600/60 transition">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <h2 className="text-xl font-semibold text-emerald-300">Interview Summary</h2>
-                      <button
-                        onClick={() => copyText(session.summary || "", "summary")}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-black/40 px-3 py-1.5 text-xs text-gray-200 hover:border-emerald-600 hover:text-emerald-200"
-                      >
-                        {copied === "summary" ? <FiCheck /> : <FiCopy />} {copied === "summary" ? "Copied" : "Copy"}
-                      </button>
-                    </div>
-                    <p className="whitespace-pre-line text-gray-100 leading-relaxed">
-                      {session.summary}
-                    </p>
-                  </div>
-                )}
-
-                {/* Feedback */}
-                {session.feedback && (
-                  <div className="rounded-3xl border border-emerald-700/40 bg-gray-900/60 p-6 sm:p-7 backdrop-blur hover:border-emerald-600/60 transition">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <h2 className="text-xl font-semibold text-emerald-300">AI Feedback</h2>
-                      <button
-                        onClick={() => copyText(session.feedback || "", "feedback")}
-                        className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-black/40 px-3 py-1.5 text-xs text-gray-200 hover:border-emerald-600 hover:text-emerald-200"
-                      >
-                        {copied === "feedback" ? <FiCheck /> : <FiCopy />} {copied === "feedback" ? "Copied" : "Copy"}
-                      </button>
-                    </div>
-                    <p className="whitespace-pre-line text-gray-100 leading-relaxed">
-                      {session.feedback}
-                    </p>
-                  </div>
-                )}
-
-                {session.status === "completed" && (
-                  <div className="rounded-3xl border border-emerald-700/40 bg-gray-900/60 p-6 sm:p-7 backdrop-blur hover:border-emerald-600/60 transition">
-                    <h2 className="mb-3 text-xl font-semibold text-emerald-300">
-                      Share your success
-                    </h2>
-                    <ShareInterview sessionId={session.id} initialEnabled={!!session.shareEnabled} initialUrl={session.shareUrl ?? null} />
-                  </div>
-                )}
-
-                {/* CTA Row */}
-                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:justify-end">
-                  <button
-                    onClick={() => router.push("/start-interview")}
-                    className="cursor-pointer inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-700/50 bg-emerald-600 px-5 py-3 font-semibold text-white shadow-[0_0_24px_rgba(34,197,94,.15)] transition hover:bg-emerald-500"
-                  >
-                    <FiPlayCircle />
-                    Start New Interview
-                  </button>
-                </div>
-              </div>
+              renderBody(session)
             ) : (
-              <div className="rounded-3xl border border-red-600/40 bg-red-500/10 p-6 text-center text-red-200">
-                Session not found or you don’t have access.
+              <div className="missing">
+                <div className="big" aria-hidden="true"></div>
+                <h2>We couldn&apos;t find that <b>interview</b></h2>
+                <p>It may have been removed, or it belongs to a different account.</p>
+                <Link href="/history" className="btn">Back to history <Arrow /></Link>
               </div>
             )}
-          </section>
-
-          {/* Local animations */}
-          <style jsx>{`
-            @keyframes scan {
-              0% { transform: translateY(-100%); }
-              100% { transform: translateY(100%); }
-            }
-            .animate-scan {
-              animation: scan 12s linear infinite;
-              background-size: auto 6px;
-            }
-          `}</style>
+          </div>
         </main>
+        <HomeFooter />
       </SignedIn>
 
       <SignedOut>
-        <div className="relative flex h-screen items-center justify-center bg-black text-white overflow-hidden">
-          <div aria-hidden className="absolute inset-0">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_40%_20%,rgba(34,197,94,.1),transparent_50%),radial-gradient(circle_at_70%_80%,rgba(59,130,246,.08),transparent_50%)]" />
-            <div className="absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,black_50%,transparent_85%)]">
-              <div className="h-full w-full bg-[linear-gradient(to_right,rgba(31,41,55,.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(31,41,55,.5)_1px,transparent_1px)] bg-[size:48px_48px]" />
-            </div>
-          </div>
-
-          <div className="relative z-10 max-w-md rounded-2xl border border-emerald-700/40 bg-gray-900/70 px-6 py-8 text-center backdrop-blur shadow-xl">
-            <p className="text-lg font-medium">Please sign in to view session details.</p>
-            <div className="mt-5">
+        <main className="page">
+          <div className="disc" aria-hidden="true"></div>
+          <div className="wrap">
+            <div className="missing">
+              <h2>Sign in to see this <b>interview</b></h2>
+              <p>Your interviews and feedback are saved to your account.</p>
               <SignInButton>
-                <button className="rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 px-8 py-3 font-semibold text-white shadow-lg transition hover:from-emerald-500 hover:to-green-600">
-                  Sign In
-                </button>
+                <button type="button" className="btn">Sign in <Arrow /></button>
               </SignInButton>
             </div>
           </div>
-        </div>
+        </main>
       </SignedOut>
-    </>
+    </div>
   );
 }

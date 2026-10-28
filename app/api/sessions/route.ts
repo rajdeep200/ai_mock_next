@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
+import { FEEDBACK_ABANDONED } from "@/lib/interview";
 import type { Types } from 'mongoose';
 
 interface SessionDoc {
@@ -14,6 +15,9 @@ interface SessionDoc {
   status: string;
   createdAt: Date;
   updatedAt: Date;
+  modelPreparationPercent?: number | null;
+  feedback?: string | null;
+  insights?: { problem?: { title?: string } } | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -27,9 +31,24 @@ export async function GET(req: NextRequest) {
     // 2. Connect to MongoDB
     await connectToDB();
 
-    // 3. Query sessions for this user
-    const sessions = await InterviewSession.find({ userId })
+    // 3. Query sessions for this user (without the transcript, which can be large)
+    const sessions = await InterviewSession.find(
+      { userId },
+      {
+        technology: 1,
+        company: 1,
+        level: 1,
+        duration: 1,
+        status: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        modelPreparationPercent: 1,
+        feedback: 1,
+        "insights.problem.title": 1,
+      }
+    )
       .sort({ createdAt: -1 })
+      .limit(300)
       .lean<SessionDoc[]>();
 
     // 4. Serialize _id and dates for JSON
@@ -42,6 +61,9 @@ export async function GET(req: NextRequest) {
       status: s.status,
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),
+      percent: typeof s.modelPreparationPercent === "number" ? s.modelPreparationPercent : null,
+      title: s.insights?.problem?.title || "",
+      endedEarly: s.feedback === FEEDBACK_ABANDONED,
     }));
 
     return NextResponse.json({ sessions: payload }, { status: 200 });

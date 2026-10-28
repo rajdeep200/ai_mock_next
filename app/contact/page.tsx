@@ -1,6 +1,7 @@
 // app/contact/page.tsx
 import type { Metadata } from "next";
 import ContactForm from "./ContactForm";
+import SiteShell from "@/component/site/SiteShell";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.mockqube.com";
 const CANONICAL = `${SITE_URL}/contact-us`;
@@ -28,29 +29,35 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
     return (
-        <main className="min-h-screen bg-black text-white">
-            <section className="mx-auto max-w-3xl px-4 sm:px-8 py-12">
-                <h1 className="text-3xl sm:text-4xl font-bold text-green-400 mb-2">
-                    Contact Us
-                </h1>
-                <p className="text-gray-300 mb-8">
-                    Have questions, feedback, or partnership ideas? We’d love to hear from you.
-                </p>
+        <SiteShell active="contact">
+            <div className="contact">
+                <div>
+                    <span className="eyebrow reveal"><i></i>We read every message</span>
+                    <h1 className="reveal d1">Contact <b>Us</b></h1>
+                    <p className="lede reveal d2">
+                        Have questions, feedback, or partnership ideas? We’d love to hear from you. We usually respond within 1–2 business days.
+                    </p>
 
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-                    <ContactForm />
-                    <div className="mt-6 text-sm text-gray-400">
-                        Or email us directly at{" "}
-                        <a
-                            className="text-green-400 hover:underline"
-                            href="mailto:support@mockqube.com"
-                        >
-                            support@mockqube.com
+                    <div className="ways reveal d3">
+                        <a className="way" href="mailto:support@mockqube.com">
+                            <span className="ico">
+                                <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 8l9 6 9-6" /></svg>
+                            </span>
+                            <div><small>Or email us directly</small><b>support@mockqube.com</b></div>
                         </a>
-                        .
+                        <div className="way">
+                            <span className="ico">
+                                <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                            </span>
+                            <div><small>Response time</small><b>1–2 business days</b></div>
+                        </div>
                     </div>
+
+                    <div className="topics reveal d3"><span>Support</span><span>Feedback</span><span>Partnerships</span><span>Press</span></div>
                 </div>
-            </section>
-        </main>
+
+                <ContactForm />
+            </div>
+        </SiteShell>
     );
 }

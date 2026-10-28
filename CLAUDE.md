@@ -66,8 +66,15 @@ were replaced by `/api/interview/turn`). `lib/crypto.ts` still exists but nothin
 - **Auth-gated pages** (`middleware.ts` `isProtectedRoute`): `/home`, `/dashboard`, `/history`, `/start-interview`,
   `/interview(.*)`, `/billing(.*)`. `/sessions(.*)` is also protected. New authenticated-only pages must be added to that matcher.
 - `component/ChromeGate.tsx` hides the global Header/Footer on pages that ship their own chrome
-  (`/`, `/home`, `/dashboard`, `/history`, `/sessions/*`, `/billing/return`, `/pricing`, `/start-interview`, `/interview`,
-  `/interview/feedback`). Add new self-chromed pages to its list.
+  (`/`, `/home`, `/dashboard`, `/history`, `/sessions/*`, `/s/*`, `/billing/return`, `/pricing`, `/start-interview`,
+  `/interview`, `/interview/feedback`, `/about`, `/contact`, `/terms`, `/privacy-policy`, `/refund-policy`).
+  Add new self-chromed pages to its list.
+- **Information pages** (`/about`, `/contact`, `/terms`, `/privacy-policy`, `/refund-policy`) share `component/site/`:
+  `SiteShell` (fonts, `SiteHeader`, `HomeFooter`, styles in `site.css` scoped under `.mqw`) and, for the legal pages,
+  `LegalLayout` (heading, effective date, sticky `LegalToc` built from each `<section><h2>`, related-page links).
+  Legal page bodies are plain `<section><h2>…</h2><p>/<ul>…` markup with no classes (use `className="muted"` for
+  small print and `className="in"` for links); the intro goes in `<div className="intro">`. The contact form still
+  opens a `mailto:` (no backend).
 - **Interview flow**: `/start-interview` (company, level easy|medium|hard, duration, optional focus topic)
   → POST `/api/create-interview` → `/interview?sessionId=…&technology=dsa&company=…&level=…&duration=…`
   → on end POST `/api/interview/summary` → `/interview/feedback?sessionId=…` (rating form posts to

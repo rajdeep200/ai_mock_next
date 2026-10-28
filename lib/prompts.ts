@@ -323,6 +323,7 @@ DIFFICULTY: ${difficulty.toUpperCase()}
 
 # Closing
 - End with a brief (3–5 lines) summary: strengths, concrete improvement, and next step they should practice. No grades; no numeric scoring.
+- Near the end of the time you may receive a system message saying time is almost up. Follow it: give a short, warm goodbye, say you need to wrap up and that feedback will follow. Do not ask a question and do not start anything new.
 
 Begin.
 `};

@@ -9,8 +9,7 @@ type Props = {
   score?: number | null;
 };
 
-// Same behaviour as component/ShareInterview.tsx, restyled for the redesigned feedback page.
-// (ShareInterview is still used by /sessions/[id], which keeps the older look.)
+// Share toggle, link and LinkedIn helpers. Used on /interview/feedback and /sessions/[id]; its styles live in feedback.css under .mqf.
 export default function ShareCard({ sessionId, initialEnabled, initialUrl, score }: Props) {
   const [enabled, setEnabled] = useState(!!initialEnabled);
   const [url, setUrl] = useState<string | null>(initialUrl || null);

@@ -1,6 +1,10 @@
 // app/api/og/session/[slug]/route.ts
+// The image shown when a shared interview link is posted (and what "Download image" saves).
+// Satori supports only a subset of CSS: every element with several children needs display:flex,
+// and the score ring is an inline SVG image rather than a conic-gradient.
 import React from "react";
 import { ImageResponse } from "next/og";
+import { READY_PERCENT } from "@/lib/dashboard";
 
 export const runtime = "edge"; // allowed on API routes
 
@@ -8,29 +12,19 @@ export const runtime = "edge"; // allowed on API routes
 const WIDTH = 1200;
 const HEIGHT = 630;
 
+const INK = "#16150F";
+const INK_2 = "#5C5850";
+const LINE = "#E3DDD3";
+const OK = "#1F8F5F";
+const SUN = "#FFB43A";
+const BLUSH = "#FF8F6B";
+const COBALT = "#2B3AF0";
+
+const h = React.createElement;
+
 function originFromReq(req: Request) {
   const u = new URL(req.url);
   return `${u.protocol}//${u.host}`;
-}
-
-function badge(text: string) {
-  return React.createElement(
-    "div",
-    {
-      style: {
-        display: "flex", // Satori supports: flex | block | none | -webkit-box
-        alignItems: "center",
-        borderRadius: 999,
-        padding: "6px 14px",
-        fontSize: 22,
-        fontWeight: 700,
-        border: "1px solid rgba(16,185,129,.35)",
-        background: "rgba(16,185,129,.10)",
-        color: "#a7f3d0",
-      },
-    },
-    text
-  );
 }
 
 async function fetchWithTimeout(
@@ -52,6 +46,40 @@ async function fetchWithTimeout(
   }
 }
 
+function chip(text: string, key: string) {
+  return h(
+    "div",
+    {
+      key,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        padding: "8px 22px",
+        borderRadius: 999,
+        background: "#FFFFFF",
+        border: `1px solid ${LINE}`,
+        fontSize: 24,
+        fontWeight: 600,
+        color: INK,
+      },
+    },
+    text
+  );
+}
+
+// Score ring as an SVG data URI: a white track and a coloured arc for the percentage
+function ringSrc(percent: number, color: string) {
+  const r = 120;
+  const c = 2 * Math.PI * r;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">` +
+    `<circle cx="150" cy="150" r="${r}" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="30"/>` +
+    `<circle cx="150" cy="150" r="${r}" fill="none" stroke="#EFE9DF" stroke-width="30"/>` +
+    `<circle cx="150" cy="150" r="${r}" fill="none" stroke="${color}" stroke-width="30" stroke-linecap="round" ` +
+    `stroke-dasharray="${(c * percent) / 100} ${c}" transform="rotate(-90 150 150)"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export async function GET(
   req: Request,
   ctx: { params: Promise<{ slug: string }> } // Next 15: params is a Promise
@@ -67,7 +95,6 @@ export async function GET(
     modelPreparationPercent: number | null;
     updatedAt: string | null;
     company?: string | null;
-    displayName?: string | null;
   } | null = null;
 
   try {
@@ -81,179 +108,96 @@ export async function GET(
     }
   } catch {}
 
-  const tech = data?.technology?.toLocaleUpperCase() || "Mock Interview";
-  const level = data?.level || "—";
-  const duration = data?.duration != null ? `${data.duration}m` : "—";
-  const prep =
-    typeof data?.modelPreparationPercent === "number"
-      ? `${data.modelPreparationPercent}%`
-      : "—";
+  const techRaw = data?.technology ?? "";
+  const tech = techRaw.toLowerCase() === "dsa" ? "DSA" : techRaw;
+  const level = data?.level ? data.level.charAt(0).toUpperCase() + data.level.slice(1) : null;
   const company = data?.company || null;
+  const percent =
+    typeof data?.modelPreparationPercent === "number" ? data.modelPreparationPercent : null;
 
-  // simple date formatting (avoid ICU quirks)
-  const dateStr = (() => {
-    if (!data?.updatedAt) return null;
-    const d = new Date(data.updatedAt);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const da = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${da}`;
-  })();
+  const color = percent === null ? COBALT : percent >= READY_PERCENT ? OK : percent >= 50 ? SUN : BLUSH;
+  const note = percent === null ? "" : percent >= READY_PERCENT ? "Interview-ready" : percent >= 50 ? "Getting there" : "Needs practice";
 
-  const displayName = data?.displayName || "MockQube Candidate";
-  const initials =
-    displayName
-      .split(" ")
-      .map((p) => p[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join("")
-      .toUpperCase() || "MC";
-
-  // Backgrounds
-  const bgGlow = React.createElement("div", {
-    style: {
-      position: "absolute",
-      inset: 0,
-      background:
-        "radial-gradient(900px 280px at 50% 120%, rgba(34,197,94,.22), transparent 70%)",
-    },
-  });
-
-  const grid = React.createElement("div", {
-    style: {
-      position: "absolute",
-      inset: 0,
-      opacity: 0.22,
-      background:
-        "linear-gradient(to right, rgba(31,41,55,.45) 1px, transparent 1px), linear-gradient(to bottom, rgba(31,41,55,.45) 1px, transparent 1px)",
-      backgroundSize: "48px 48px",
-    },
-  });
-
-  // Top row
-  const avatar = React.createElement(
-    "div",
-    {
-      style: {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: 96,
-        width: 96,
-        borderRadius: 16,
-        border: "1px solid rgba(16,185,129,.35)",
-        background: "rgba(2,6,23,.7)",
-        boxShadow: "0 0 28px rgba(16,185,129,.18)",
-        color: "#a7f3d0",
-        fontWeight: 800,
-        fontSize: 36,
-      },
-    },
-    initials
-  );
-
-  const nameEl = React.createElement(
-    "div",
-    { style: { fontSize: 34, fontWeight: 800, color: "#e5e7eb" } },
-    displayName
-  );
-
-  const titleEl = React.createElement(
-    "div",
-    {
-      style: {
-        fontSize: 54,
-        fontWeight: 900,
-        letterSpacing: -0.5,
-        marginTop: 8,
-        color: "#e5e7eb",
-      },
-    },
-    tech
-  );
-
-  const subtitleParts = [
-    company ? `@ ${company}` : null,
-    dateStr || null,
+  const subtitle = [tech ? `${tech} mock interview` : "Mock interview", level, company].filter(Boolean).join(" · ");
+  const chips = [
+    data?.duration != null ? chip(`${data.duration} min`, "d") : null,
+    note ? chip(note, "n") : null,
   ].filter(Boolean);
-  const subtitle = React.createElement(
-    "div",
-    { style: { fontSize: 26, color: "#a7f3d0", marginTop: 4, minHeight: 32 } },
-    subtitleParts.join(" • ")
-  );
 
-  const badgesRow = React.createElement(
-    "div",
-    { style: { display: "flex", gap: 16, flexWrap: "wrap", marginTop: 22 } },
-    [
-      badge(`Level: ${level}`),
-      badge(`Duration: ${duration}`),
-      badge(`Prepared: ${prep}`),
-    ]
-  );
-
-  const footerBrand = React.createElement(
-    "div",
-    {
-      style: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        fontSize: 22,
-        color: "#9ca3af",
-        marginTop: 40,
-      },
+  // soft sun-to-cobalt disc in the corner, like the site's pages
+  const disc = h("div", {
+    style: {
+      position: "absolute",
+      right: -150,
+      top: -230,
+      width: 760,
+      height: 760,
+      borderRadius: 380,
+      opacity: 0.22,
+      background: "linear-gradient(150deg, #FFC24D 0%, #FF8F6B 38%, #7A5CFF 78%, #2B3AF0 100%)",
     },
-    [
-      React.createElement(
-        "div",
-        { key: "tag" },
-        "AI-powered mock interviews & feedback"
-      ),
-      React.createElement(
-        "div",
-        { key: "brand", style: { fontWeight: 800, color: "#a7f3d0" } },
-        "MockQube"
-      ),
-    ]
+  });
+
+  const brand = h(
+    "div",
+    { style: { display: "flex", alignItems: "center", gap: 14 } },
+    h("div", { style: { width: 22, height: 22, borderRadius: 11, background: COBALT } }),
+    h("div", { style: { fontSize: 36, fontWeight: 800, color: INK } }, "MockQube")
   );
 
-  // Card (multiple children => must declare display:flex for Satori)
-  const card = React.createElement(
+  const left = h(
     "div",
-    {
-      style: {
-        position: "relative",
-        width: 1040,
-        borderRadius: 24,
-        padding: "40px 48px",
-        background: "rgba(2,6,23,.75)",
-        border: "1px solid rgba(16,185,129,.28)",
-        boxShadow: "0 0 60px rgba(16,185,129,.16)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      },
-    },
-    [
-      React.createElement(
-        "div",
-        {
-          key: "top",
-          style: { display: "flex", alignItems: "center", gap: 18 },
+    { style: { display: "flex", flexDirection: "column", flex: 1, paddingRight: 40 } },
+    h("div", { style: { fontSize: 28, fontWeight: 600, color: INK_2 } }, subtitle),
+    h(
+      "div",
+      {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          marginTop: 14,
+          fontSize: 92,
+          fontWeight: 800,
+          lineHeight: 1.02,
+          letterSpacing: -3,
+          color: INK,
         },
-        [avatar, nameEl]
-      ),
-      titleEl,
-      subtitle,
-      badgesRow,
-      footerBrand,
-    ]
+      },
+      percent === null
+        ? [h("div", { key: "a" }, "Mock interview"), h("div", { key: "b" }, "completed")]
+        : [h("div", { key: "a" }, "Preparation"), h("div", { key: "b", style: { color: INK_2 } }, "score")]
+    ),
+    chips.length
+      ? h("div", { style: { display: "flex", gap: 14, marginTop: 34 } }, chips as React.ReactElement[])
+      : null
   );
 
-  // Root must be a flex container (already is)
-  const tree = React.createElement(
+  const ring =
+    percent === null
+      ? null
+      : h(
+          "div",
+          { style: { display: "flex", position: "relative", width: 300, height: 300 } },
+          h("img", { src: ringSrc(percent, color), width: 300, height: 300, style: { position: "absolute", left: 0, top: 0 } }),
+          h(
+            "div",
+            {
+              style: {
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width: 300,
+                height: 300,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              },
+            },
+            h("div", { style: { fontSize: 104, fontWeight: 800, color: INK, letterSpacing: -4 } }, `${percent}%`)
+          )
+        );
+
+  const tree = h(
     "div",
     {
       style: {
@@ -261,16 +205,18 @@ export async function GET(
         width: "100%",
         position: "relative",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#020617",
-        color: "#e5e7eb",
-        padding: "40px",
-        fontFamily:
-          "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        padding: "64px 72px",
+        background: "linear-gradient(100deg, #FBF9F6, #F4F0EA)",
+        color: INK,
+        fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto",
       },
     },
-    [bgGlow, grid, card]
+    disc,
+    brand,
+    h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } }, left, ring),
+    h("div", { style: { display: "flex", fontSize: 26, fontWeight: 600, color: INK_2 } }, "Practise your own AI mock interview at mockqube.com")
   );
 
   const image = new ImageResponse(tree, { width: WIDTH, height: HEIGHT });

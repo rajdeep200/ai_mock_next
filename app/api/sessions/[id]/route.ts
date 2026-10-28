@@ -5,6 +5,8 @@ import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
 import { Types } from "mongoose";
 import { z } from "zod";
+import { FEEDBACK_ABANDONED } from "@/lib/interview";
+import type { SessionInsights } from "@/lib/insights";
 
 interface SessionDoc {
   _id: Types.ObjectId;
@@ -19,6 +21,10 @@ interface SessionDoc {
   feedback?: string | null;
   shareEnabled?: boolean;
   shareSlug?: string | null;
+  modelPreparationPercent?: number | null;
+  scoreBreakdown?: { dimensions?: { key: string; label: string; weight: number; score: number | null; evidence: string }[] } | null;
+  insights?: SessionInsights | null;
+  feedbackGenerated?: boolean;
 }
 
 // Helpers
@@ -74,6 +80,10 @@ export async function GET(
         feedback: 1,
         shareEnabled: 1,
         shareSlug: 1,
+        modelPreparationPercent: 1,
+        scoreBreakdown: 1,
+        insights: 1,
+        feedbackGenerated: 1,
       }
     ).lean<SessionDoc>();
 
@@ -103,6 +113,11 @@ export async function GET(
           feedback: session.feedback ?? null,
           shareEnabled: enabled,
           shareUrl, // handy for the UI
+          percent: typeof session.modelPreparationPercent === "number" ? session.modelPreparationPercent : null,
+          breakdown: session.scoreBreakdown?.dimensions ?? null,
+          insights: session.insights ?? null,
+          feedbackGenerated: !!session.feedbackGenerated,
+          endedEarly: session.feedback === FEEDBACK_ABANDONED,
         },
       },
       { status: 200 }

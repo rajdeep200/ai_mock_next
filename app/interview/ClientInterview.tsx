@@ -8,7 +8,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Bricolage_Grotesque, Figtree } from "next/font/google";
 import "./interview.css";
-import { containsEndToken, MAX_LIVE_CODE_CHARS, MAX_MESSAGE_CHARS, type TurnType } from "@/lib/interview";
+import { containsEndToken, END_TOKEN_REGEX, MAX_LIVE_CODE_CHARS, MAX_MESSAGE_CHARS, WRAPUP_LEAD_SECONDS, type TurnType } from "@/lib/interview";
 import dynamic from "next/dynamic";
 
 const bricolage = Bricolage_Grotesque({
@@ -32,6 +32,7 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
 
 type Stage = "intro" | "clarify" | "coding" | "review" | "wrapup";
 const TIME_WARNINGS_S = [300, 120, 60];
+const END_TOKEN_GLOBAL = new RegExp(END_TOKEN_REGEX.source, "gi");
 
 
 // How long to wait after the last word before treating an answer as finished.
@@ -129,6 +130,7 @@ export default function InterviewPage() {
   const clockSyncedRef = useRef(false); // the server's remaining time has been applied
   const userCodeRef = useRef(""); // latest editor content, readable from async callbacks
   const queuedRef = useRef<TurnPayload[]>([]); // things said while a turn was in flight
+  const wrapupStartedRef = useRef(false); // the closing turn has been requested: nothing else goes to the interviewer
 
   // CHANGED: start as null so we **wait** for plan fetch before starting
   const [allowedMinutes, setAllowedMinutes] = useState<number | undefined>(undefined); // NEW
@@ -241,7 +243,8 @@ export default function InterviewPage() {
   // Shows and speaks one interviewer reply sentence by sentence while it is still being written:
   // each finished sentence is sent to TTS straight away, and the sentences are played in order.
   // The text for a sentence appears when its audio starts, so text and voice stay in step.
-  const createReplySpeaker = (opts?: { silence?: boolean; local?: boolean }) => {
+  // With `onComplete` (the closing turn) the interviewer's whole reply is voiced, then the callback runs instead of re-opening the mic.
+  const createReplySpeaker = (opts?: { silence?: boolean; local?: boolean; onComplete?: () => void }) => {
     cancelTTS(); // anything still speaking or queued is replaced
     const token = speechTokenRef.current;
     const alive = () => token === speechTokenRef.current;
@@ -271,7 +274,8 @@ export default function InterviewPage() {
     const complete = () => {
       playingRef.current = false;
       setSpeaking(false);
-      startListening(); // re-arm the mic once the interviewer has finished
+      if (opts?.onComplete) opts.onComplete();
+      else startListening(); // re-arm the mic once the interviewer has finished
     };
 
     const pump = async () => {
@@ -317,6 +321,11 @@ export default function InterviewPage() {
     return {
       push(delta: string) {
         if (!alive() || endSeen) return;
+        if (opts?.onComplete) {
+          full += delta.replace(END_TOKEN_GLOBAL, ""); // closing turn: voice the whole goodbye, never the control token
+          flush(false);
+          return;
+        }
         full += delta;
         if (containsEndToken(full)) { endSeen = true; return; } // the interview is ending: don't voice anything more
         flush(false);
@@ -588,7 +597,12 @@ export default function InterviewPage() {
   // The server commits the exchange only when the reply completes, so a failed turn can be retried safely.
   const runTurn = async (p: TurnPayload, opts?: { silence?: boolean }): Promise<void> => {
     if (endedRef.current) return;
+    const wrap = p.type === "wrapup";
+    if (wrapupStartedRef.current && !wrap) return; // the interviewer is saying goodbye: nothing more goes in
     if (busyRef.current) { queuedRef.current.push(p); return; } // sent right after the current turn
+    if (wrap) queuedRef.current = []; // whatever was said while waiting no longer gets a reply
+    // The closing turn is voiced in full, and the interview ends once the goodbye has finished playing
+    const speakerOpts = wrap ? { onComplete: () => { void handleEndInterview(); } } : opts;
     busyRef.current = true;
     setLoading(true);
     setTurnError(false);
@@ -622,11 +636,11 @@ export default function InterviewPage() {
         // Whole reply at once (reopening an interview returns the last question this way)
         const data = await res.json();
         reply = data?.reply ?? "";
-        ended = !!data?.ended;
+        ended = !!data?.ended && !wrap;
         syncClock(data?.remainingSec);
         if (!reply) throw new TurnError("Empty reply");
         if (!ended) {
-          speaker = createReplySpeaker(opts);
+          speaker = createReplySpeaker(speakerOpts);
           speaker.push(reply);
           speaker.finish();
         }
@@ -641,11 +655,11 @@ export default function InterviewPage() {
           if (!line.trim()) return;
           const ev = JSON.parse(line);
           if (ev.t === "meta") syncClock(ev.remainingSec);
-          else if (ev.t === "delta") (speaker ??= createReplySpeaker(opts)).push(ev.text);
+          else if (ev.t === "delta") (speaker ??= createReplySpeaker(speakerOpts)).push(ev.text);
           else if (ev.t === "done") {
             gotDone = true;
             reply = ev.reply;
-            ended = !!ev.ended;
+            ended = !!ev.ended && !wrap;
             syncClock(ev.remainingSec);
           } else if (ev.t === "error") throw new TurnError(ev.error || "The interviewer is unavailable.", ev.code);
         };
@@ -662,7 +676,7 @@ export default function InterviewPage() {
         if (!gotDone) throw new TurnError("Connection lost"); // stream ended without the final event
 
         if (!ended) {
-          speaker ??= createReplySpeaker(opts);
+          speaker ??= createReplySpeaker(speakerOpts);
           speaker.finish();
         }
       }
@@ -678,6 +692,12 @@ export default function InterviewPage() {
       speaker?.abort(); // drop whatever was still queued from a reply that didn't complete
       if (endedRef.current) return;
       const code = e instanceof TurnError ? e.code : undefined;
+      if (wrap && code !== "NOT_ACTIVE" && code !== "TOO_FAST") {
+        // No goodbye available (error, busy, cap): end normally rather than leave the candidate waiting
+        resolveFlight();
+        void handleEndInterview();
+        return;
+      }
       if (code === "TIME_UP" || code === "TURN_CAP") {
         resolveFlight();
         void handleEndInterview(); // the server says this interview is over
@@ -769,8 +789,16 @@ export default function InterviewPage() {
         return;
       }
 
-      // Time warnings (only while > 0)
+      // Closing turn: the interviewer says goodbye, then the interview ends once it has been spoken.
+      // Waits for the first reply (the server clock is synced then) so there is a conversation to close.
+      if (safeSecsLeft <= WRAPUP_LEAD_SECONDS && clockSyncedRef.current && !wrapupStartedRef.current) {
+        wrapupStartedRef.current = true; // set now so a busy turn doesn't queue this once per tick
+        void runTurn({ type: "wrapup" });
+      }
+
+      // Time warnings (only while > 0), skipped once the interviewer is closing so they don't talk over the goodbye
       for (const warn of TIME_WARNINGS_S) {
+        if (wrapupStartedRef.current) break;
         if (safeSecsLeft <= warn && !warnedAtSecondsRef.current.has(warn)) {
           warnedAtSecondsRef.current.add(warn);
           void assistantPush(

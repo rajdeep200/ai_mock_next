@@ -19,6 +19,7 @@ import {
   MAX_TURNS,
   MIN_TURN_GAP_MS,
   SILENCE_CHECKIN,
+  WRAPUP_INSTRUCTION,
   type ApiErrorCode,
 } from "@/lib/interview";
 
@@ -36,7 +37,7 @@ type Msg = { role: Role; content: string };
 const bodySchema = z
   .object({
     sessionId: z.string().trim().refine((v) => Types.ObjectId.isValid(v), "invalid sessionId"),
-    type: z.enum(["start", "message", "code", "silence"]),
+    type: z.enum(["start", "message", "code", "silence", "wrapup"]),
     content: z.string().max(MAX_MESSAGE_CHARS).optional(),
     liveCode: z.string().max(MAX_LIVE_CODE_CHARS * 2).optional(),
   })
@@ -143,7 +144,11 @@ export async function POST(req: NextRequest) {
           ? [{ role: "user", content: `Here is my code:\n${content}` }]
           : type === "silence"
             ? [{ role: "system", content: SILENCE_CHECKIN }]
-            : [];
+            : type === "wrapup"
+              ? [{ role: "system", content: WRAPUP_INSTRUCTION }]
+              : [];
+    // The closing instruction is for the model only: saving it would count as a silence check-in when scoring
+    const persisted = type === "wrapup" ? [] : added;
 
     const dbUser = await User.findOne({ clerkId: userId }).select("fullName").lean<{ fullName?: string }>();
     const candidateName = (dbUser?.fullName ?? "").trim().split(/\s+/)[0] ?? "";
@@ -226,7 +231,7 @@ export async function POST(req: NextRequest) {
           const reply = full.trim();
           if (!reply) throw new Error("empty reply");
 
-          const stamped = [...added, { role: "assistant" as const, content: reply }].map((m) => ({ ...m, at: new Date() }));
+          const stamped = [...persisted, { role: "assistant" as const, content: reply }].map((m) => ({ ...m, at: new Date() }));
           const saved = await InterviewSession.updateOne(
             { _id: sessionId, userId, status: "active" },
             { $push: { transcript: { $each: stamped } } }

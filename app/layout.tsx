@@ -1,6 +1,6 @@
 import { type Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Geist, Geist_Mono } from "next/font/google";
+import { geistSans, geistMono } from "@/lib/fonts";
 import "./globals.css";
 import Header from "@/component/Header";
 import RegisterUser from "@/component/RegisterUser";
@@ -13,16 +13,6 @@ import { META_KEYWORDS } from "@/lib/constant";
 const siteUrl = "https://www.mockqube.com";
 const logo = "/mockqubelogo.png";
 const ogImage = logo;
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

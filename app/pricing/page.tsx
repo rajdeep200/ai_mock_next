@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { bricolage, figtree } from "@/lib/fonts";
 import "./pricing.css";
 import PricingHeader from "@/component/pricing/PricingHeader";
 import PricingClient from "@/component/pricing/PricingClient";
@@ -7,20 +7,6 @@ import HomeFooter from "@/component/home/HomeFooter";
 import ScrollReveal from "@/component/home/ScrollReveal";
 import { Arrow } from "@/component/home/icons";
 import { PLANS } from "@/lib/plans";
-
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["300", "500", "700"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-figtree",
-  display: "swap",
-});
 
 const Yes = () => (
   <i className="y"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg></i>

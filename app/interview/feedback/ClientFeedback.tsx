@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { bricolage, figtree } from "@/lib/fonts";
 import "./feedback.css";
 import AppHeader from "@/component/home/AppHeader";
 import HomeFooter from "@/component/home/HomeFooter";
@@ -12,20 +12,6 @@ import { Arrow } from "@/component/home/icons";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["300", "500", "700"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-figtree",
-  display: "swap",
-});
 
 type SessionLite = {
   technology: string;

@@ -4,26 +4,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { bricolage, figtree } from "@/lib/fonts";
 import "./history.css";
 import AppHeader from "@/component/home/AppHeader";
 import HomeFooter from "@/component/home/HomeFooter";
 import { Arrow } from "@/component/home/icons";
 import { READY_PERCENT } from "@/lib/dashboard";
-
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["300", "500", "700"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-figtree",
-  display: "swap",
-});
 
 interface Session {
   id: string;

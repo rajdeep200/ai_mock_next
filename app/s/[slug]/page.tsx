@@ -2,7 +2,7 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { bricolage, figtree } from "@/lib/fonts";
 import "./share.css";
 import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
@@ -13,20 +13,6 @@ import { READY_PERCENT } from "@/lib/dashboard";
 import { DIMENSIONS } from "@/lib/dimensions";
 import { parseFeedback } from "@/lib/feedback";
 import type { Types } from "mongoose";
-
-const bricolage = Bricolage_Grotesque({
-    subsets: ["latin"],
-    weight: ["300", "500", "700"],
-    variable: "--font-bricolage",
-    display: "swap",
-});
-
-const figtree = Figtree({
-    subsets: ["latin"],
-    weight: ["400", "500", "600"],
-    variable: "--font-figtree",
-    display: "swap",
-});
 
 type Props = { params: Promise<{ slug: string }> };
 

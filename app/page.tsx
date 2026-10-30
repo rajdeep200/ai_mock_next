@@ -62,7 +62,7 @@ const SKILLS = [
 
 const FAQS = [
   { q: "What is MockQube?", a: "A mock interview you do by voice. An AI interviewer asks questions, reacts to your answers and can move you into a coding exercise." },
-  { q: "Which topics can I practice?", a: "MockQube focuses on data structures and algorithms (DSA) interviews, including company-style rounds." },
+  { q: "Which topics can I practice?", a: "MockQube focuses on data structures and algorithms (DSA) interviews, including company-style rounds. On Starter and Pro you can also pick a single topic, such as Binary search, Sorting, BFS or DFS, and the whole interview is built around it." },
   { q: "Do I need a microphone?", a: "The voice flow uses your browser's speech recognition, so a microphone and a supported browser work best. You can also write your answers in the editor." },
   { q: "How long can a session be?", a: "Free sessions run up to 15 minutes, Starter up to 30, and Pro up to 45." },
   { q: "Can I share my results?", a: "Yes. Any completed session can be turned into a public link with a preview image." },

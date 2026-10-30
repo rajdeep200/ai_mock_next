@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Arrow } from "@/component/home/icons";
-import { FOCUS_TOPICS } from "@/lib/insights";
+import { FOCUS_GROUPS, FOCUS_TOPICS } from "@/lib/insights";
 
 type PlanInfo = {
   plan: {
@@ -13,6 +13,7 @@ type PlanInfo = {
     monthlyInterviewCap: number;
     maxMinutesPerInterview: number;
     label: string;
+    features: { topicFocus: boolean };
   };
   usage: { interviewsCount: number; month: string };
 };
@@ -70,6 +71,9 @@ export default function StartInterviewClient() {
   useEffect(() => {
     if (planInfo && !touchedDuration) setDuration(Math.min(DEFAULT_MINUTES, planInfo.plan.maxMinutesPerInterview));
   }, [planInfo, touchedDuration]);
+
+  // Until the plan loads the picker stays open; the server enforces this either way.
+  const topicsLocked = planInfo ? !planInfo.plan.features.topicFocus : false;
 
   const capReached = planInfo ? planInfo.usage.interviewsCount >= planInfo.plan.monthlyInterviewCap : false;
   const tooLong = planInfo ? duration > planInfo.plan.maxMinutesPerInterview : false;
@@ -166,8 +170,54 @@ export default function StartInterviewClient() {
             </div>
           </section>
 
+          <section className="step" aria-labelledby="s3b">
+            <div className="step-h">
+              <span className="num">2</span>
+              <h2 id="s3b">Topic-wise interview</h2>
+              {topicsLocked ? <span className="req plan-tag">Starter &amp; Pro</span> : <span className="req">Optional</span>}
+            </div>
+            <p className="topic-note">
+              {topicsLocked
+                ? <>Practise one topic at a time, like Binary search, Sorting, BFS or DFS. <Link href="/pricing">Upgrade to unlock</Link>.</>
+                : "Pick one topic and the whole interview is built around it. Skip it for a mixed round."}
+            </p>
+            <div className="topics" role="radiogroup" aria-labelledby="s3b">
+              <button type="button" role="radio" aria-checked={!focus} className={`topic any${!focus ? " on" : ""}`} onClick={() => setFocus("")}>
+                <b>Any topic</b>
+                <small>A mixed round for your level</small>
+              </button>
+              {FOCUS_GROUPS.map((g) => (
+                <div className="tgroup" key={g.label}>
+                  <h3>{g.label}</h3>
+                  <div className="tlist">
+                    {g.keys.map((k) => {
+                      const label = FOCUS_TOPICS.find((t) => t.key === k)?.label ?? k;
+                      return (
+                        <button
+                          type="button"
+                          role="radio"
+                          key={k}
+                          aria-checked={focus === k}
+                          aria-disabled={topicsLocked || undefined}
+                          disabled={topicsLocked}
+                          className={`topic${focus === k ? " on" : ""}${topicsLocked ? " locked" : ""}`}
+                          onClick={() => setFocus(k)}
+                        >
+                          {topicsLocked && (
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                          )}
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className={`step field${noCompany ? " bad" : ""}`} aria-labelledby="s2">
-            <div className="step-h"><span className="num">2</span><h2 id="s2">Target company</h2><span className="req">Required</span></div>
+            <div className="step-h"><span className="num">3</span><h2 id="s2">Target company</h2><span className="req">Required</span></div>
             <input
               className="input"
               name="company"
@@ -195,7 +245,7 @@ export default function StartInterviewClient() {
           </section>
 
           <section className={`step field${noLevel ? " bad" : ""}`} aria-labelledby="s3">
-            <div className="step-h"><span className="num">3</span><h2 id="s3">Difficulty</h2><span className="req">Required</span></div>
+            <div className="step-h"><span className="num">4</span><h2 id="s3">Difficulty</h2><span className="req">Required</span></div>
             <div className="levels" role="radiogroup" aria-labelledby="s3">
               {LEVELS.map((l) => (
                 <label key={l.value} className={`lv ${l.value}`}>
@@ -214,27 +264,6 @@ export default function StartInterviewClient() {
               ))}
             </div>
             <p className="err" style={{ marginTop: 12 }}>Pick a difficulty to continue.</p>
-          </section>
-
-          <section className="step" aria-labelledby="s3b">
-            <div className="step-h"><span className="num">4</span><h2 id="s3b">Focus topic</h2><span className="req">Optional</span></div>
-            <div className="sugs" role="radiogroup" aria-labelledby="s3b">
-              <button type="button" role="radio" aria-checked={!focus} className={!focus ? "on" : undefined} onClick={() => setFocus("")}>
-                Any topic
-              </button>
-              {FOCUS_TOPICS.map((t) => (
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={focus === t.key}
-                  key={t.key}
-                  className={focus === t.key ? "on" : undefined}
-                  onClick={() => setFocus(t.key)}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
           </section>
 
           <section className="step" aria-labelledby="s4">

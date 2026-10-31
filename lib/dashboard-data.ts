@@ -32,7 +32,9 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
       .sort({ createdAt: 1 })
       .limit(300)
       .lean<Row[]>(),
-    User.findOne({ clerkId: userId }).select("fullName").lean<{ fullName?: string }>(),
+    User.findOne({ clerkId: userId })
+      .select("fullName plan planRenewsAt subscriptionId")
+      .lean<{ fullName?: string; plan?: string; planRenewsAt?: Date | null; subscriptionId?: string | null }>(),
     getUserPlan(userId),
     getCurrentUsage(userId),
   ]);
@@ -51,9 +53,24 @@ export async function loadDashboard(userId: string): Promise<DashboardData> {
   }));
 
   const firstName = (user?.fullName ?? "").trim().split(/\s+/)[0] || "there";
-  return buildDashboard(sessions, {
-    firstName,
-    monthUsed: usage?.interviewsCount ?? 0,
-    monthCap: plan.plan.monthlyInterviewCap,
-  });
+  // An invite trial is a paid plan with an end date but no payment behind it (redeeming never sets subscriptionId).
+  let trial: DashboardData["trial"] = null;
+  if (user?.plan && user.plan !== "free" && !user.subscriptionId && user.planRenewsAt) {
+    const endsAt = new Date(user.planRenewsAt);
+    const msLeft = endsAt.getTime() - Date.now();
+    trial = {
+      state: msLeft > 0 ? "active" : "ended",
+      endsAt: endsAt.toISOString(),
+      daysLeft: Math.max(0, Math.ceil(msLeft / 86_400_000)),
+    };
+  }
+
+  return {
+    ...buildDashboard(sessions, {
+      firstName,
+      monthUsed: usage?.interviewsCount ?? 0,
+      monthCap: plan.plan.monthlyInterviewCap,
+    }),
+    trial,
+  };
 }

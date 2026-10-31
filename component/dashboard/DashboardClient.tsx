@@ -11,6 +11,7 @@ import {
 } from "@/lib/dashboard";
 import { Arrow } from "@/component/home/icons";
 import { SkillRadar, TrendChart } from "./charts";
+import TrialBanner from "./TrialBanner";
 
 // ---------- helpers ----------
 const fmtDate = (iso: string, long = false) =>
@@ -240,6 +241,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
         <div className="head">
           <div><h1>Your <b>progress</b>, {data.firstName}</h1></div>
         </div>
+        {data.trial && <TrialBanner trial={data.trial} />}
         <div className="card empty" style={{ display: "block" }}>
           <div className="big" aria-hidden="true" />
           <h2>Your first interview starts your <b>progress</b></h2>
@@ -270,6 +272,8 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
         </div>
         <Link href="/start-interview" className="btn">Start an interview <Arrow /></Link>
       </div>
+
+      {data.trial && <TrialBanner trial={data.trial} />}
 
       {/* 1. at a glance */}
       <Reveal as="section" className="stats">

@@ -239,3 +239,13 @@ html:has(.mqd){scroll-behavior:smooth}
 
 .mqd .btn svg{width:18px;height:18px;flex:none;transition:transform .25s var(--ease-out)}
 .mqd .btn:hover svg{transform:translateX(4px)}
+
+/* Invite-trial banner */
+.mqd .trialbar{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:0 0 28px;padding:18px 22px;border-radius:22px;background:#EEF0FF;border:1px solid #D7DBFF;color:#1B26B8}
+.mqd .trialbar.urgent{background:#FFF3DC;border-color:#F3DDA8;color:#7A4B00}
+.mqd .trialbar.ended{background:#FBE8E3;border-color:#F0C9BF;color:#8E2A16}
+.mqd .tb-text{flex:1 1 360px;min-width:0}
+.mqd .tb-text p{margin-top:8px;font-size:15.5px;line-height:1.5;color:var(--ink)}
+.mqd .tb-chip{display:inline-block;padding:3px 14px;border-radius:var(--r-pill);background:#fff;font-weight:600;font-size:14px}
+.mqd .tb-actions{display:flex;gap:10px;flex-wrap:wrap}
+.mqd .tb-actions .btn{min-height:46px;padding:0 22px}

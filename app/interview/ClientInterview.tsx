@@ -6,24 +6,10 @@ import { SignedIn, SignedOut, SignInButton, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { bricolage, figtree } from "@/lib/fonts";
 import "./interview.css";
 import { containsEndToken, END_TOKEN_REGEX, MAX_LIVE_CODE_CHARS, MAX_MESSAGE_CHARS, WRAPUP_LEAD_SECONDS, type TurnType } from "@/lib/interview";
 import dynamic from "next/dynamic";
-
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["300", "500", "700"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-figtree",
-  display: "swap",
-});
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,

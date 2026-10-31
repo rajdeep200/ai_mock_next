@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth, SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { bricolage, figtree } from "@/lib/fonts";
 import "./session.css";
 import "@/app/interview/feedback/feedback.css"; // styles for ShareCard
 import AppHeader from "@/component/home/AppHeader";
@@ -16,20 +16,6 @@ import { READY_PERCENT } from "@/lib/dashboard";
 import { parseFeedback } from "@/lib/feedback";
 import { FEEDBACK_FAILED, FEEDBACK_NO_ANSWERS } from "@/lib/interview";
 import { ISSUE_TAGS, STRENGTH_TAGS, type SessionInsights } from "@/lib/insights";
-
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["300", "500", "700"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-figtree",
-  display: "swap",
-});
 
 interface SessionDetail {
   id: string;

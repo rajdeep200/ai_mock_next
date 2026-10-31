@@ -167,7 +167,8 @@ write its own feedback or score.
   live-code and speech-to-text handling). Every other technology falls back to `DEFAULT_PROMPT`.
   `SUMMARY_PROMPT` is legacy/unused (scoring has its own prompt in `lib/scoring.ts`).
 - **Plan enforcement**: `POST /api/create-interview` calls `checkCanStartInterview` (`lib/usage.ts`) →
-  402 with `code: MAX_MINUTES | MONTHLY_CAP`, then creates the session and `recordInterviewStart`
+  402 with `code: MAX_MINUTES | MONTHLY_CAP`, then 402 `TOPIC_LOCKED` if a `focus` topic is sent on a plan
+  without the `topicFocus` feature, then creates the session and `recordInterviewStart`
   (usage is counted at start, not completion). The start page and interview page also clamp client-side.
 
 ### Scoring and insights (`lib/scoring.ts`, `lib/dimensions.ts`, `lib/insights.ts`)
@@ -177,7 +178,7 @@ write its own feedback or score.
   complexity 20, code 15, edge_cases 10, communication 10). **The percentage is computed in code**
   (`computePercent`): weighted over assessed dimensions, `null` if `approach` wasn't assessed or assessed
   weight < 30. Fewer than 3 user turns or `enough_signal: false` → no percent and no insights.
-- Insights are tags from a fixed vocabulary (13 strengths, 13 issues, 17 topics in `lib/insights.ts`) plus
+- Insights are tags from a fixed vocabulary (13 strengths, 13 issues, 23 topics in `lib/insights.ts`) plus
   problem title/topic, a 3–6 segment timeline, `hintsGiven`, `silenceCheckins` (counted in code from system
   messages) and `doNextTime`. Strength quotes must genuinely appear in candidate speech
   (`quoteIsGenuine`) or the tag is dropped; opposing strength/issue pairs (`CONFLICTS`) cancel out.
@@ -192,7 +193,8 @@ write its own feedback or score.
   radar (avg of last 5, with "before" comparison), habit counts over the last 8 interviews, a practice plan
   (from `ISSUE_FIX`/`SKILL_FIX`), and per-interview cards. Trends/habits unlock after `UNLOCK_AT = 3`
   interviews; `READY_PERCENT = 70`. Streaks are computed in the browser (user's own timezone).
-- Optional start-page `focus` topic is stored on the session (`FOCUS_KEYS` from `lib/insights.ts`).
+- Optional start-page `focus` topic ("Topic-wise interview", step 2, Starter and Pro only) is stored on the session
+  (`FOCUS_KEYS` from `lib/insights.ts`). The picker is grouped by `FOCUS_GROUPS`; add new topics to `TOPICS` and to one group.
 
 ### Data model (`models/`, Mongoose)
 - **`User`** — `clerkId` (unique), `email`, `fullName`, `plan` (`free`/`starter`/`pro`),
@@ -217,9 +219,10 @@ write its own feedback or score.
 ### Plans & quota (`lib/plans.ts`, `lib/usage.ts`)
 Single source of truth in `PLANS`:
 - `free`: 2 interviews/month, 15 min max.
-- `starter`: 15/month, 30 min max (company patterns flag on).
+- `starter`: 15/month, 30 min max (company patterns and topic focus flags on).
 - `pro`: 25/month, 45 min max (all feature flags on).
-The feature flags (`companyPatterns`, `premiumTTS`, `export`, `fullHistory`) are not enforced anywhere yet.
+`topicFocus` is enforced (server check in `/api/create-interview`, locked picker on the start page). The other feature
+flags (`companyPatterns`, `premiumTTS`, `export`, `fullHistory`) are not enforced anywhere yet.
 Paid plans are **30-day passes** (`PASS_DAYS`), never auto-renewed. `effectivePlanId(user)` treats a paid
 plan whose `planRenewsAt` has passed as `free`; always use it (or `getUserPlan`) rather than reading
 `user.plan` directly. A paid plan with no `planRenewsAt` (hand-granted) doesn't expire.

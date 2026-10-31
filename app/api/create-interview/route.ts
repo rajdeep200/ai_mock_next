@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { connectToDB } from "@/lib/mongodb";
 import InterviewSession from "@/models/InterviewSession";
 import { checkCanStartInterview, recordInterviewStart } from "@/lib/usage";
+import { PLANS } from "@/lib/plans";
 import { z } from "zod";
 import { FOCUS_KEYS } from "@/lib/insights";
 
@@ -82,6 +83,14 @@ export async function POST(req: NextRequest) {
     if (!canStart.ok) {
       return NextResponse.json(
         { error: canStart.reason, code: canStart.code },
+        { status: 402 }
+      );
+    }
+
+    // 🔐 topic-wise interviews are a Starter and Pro feature
+    if (focus && !PLANS[canStart.planId].features.topicFocus) {
+      return NextResponse.json(
+        { error: "Topic-wise interviews are available on Starter and Pro.", code: "TOPIC_LOCKED" },
         { status: 402 }
       );
     }

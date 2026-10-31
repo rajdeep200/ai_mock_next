@@ -50,6 +50,12 @@ export const TOPICS = [
   { key: "stacks_queues", label: "Stacks & queues" },
   { key: "trees", label: "Trees" },
   { key: "graphs", label: "Graphs" },
+  { key: "bfs", label: "BFS" },
+  { key: "dfs", label: "DFS" },
+  { key: "union_find", label: "Union-Find" },
+  { key: "tries", label: "Tries" },
+  { key: "intervals", label: "Intervals" },
+  { key: "matrix", label: "Matrix & grids" },
   { key: "recursion_backtracking", label: "Recursion & backtracking" },
   { key: "dp", label: "Dynamic programming" },
   { key: "greedy", label: "Greedy" },
@@ -61,6 +67,15 @@ export const TOPICS = [
 /** Topics a candidate can pick on the start page ("other" is only a scoring label). */
 export const FOCUS_TOPICS = TOPICS.filter((t) => t.key !== "other");
 export const FOCUS_KEYS = FOCUS_TOPICS.map((t) => t.key) as [string, ...string[]];
+
+/** How the start page groups the topic picker. Every focus topic must appear in exactly one group. */
+export const FOCUS_GROUPS: { label: string; keys: readonly (typeof FOCUS_TOPICS)[number]["key"][] }[] = [
+  { label: "Basics", keys: ["arrays", "strings", "hashing", "sorting", "binary_search"] },
+  { label: "Pointers & windows", keys: ["two_pointers", "sliding_window", "intervals"] },
+  { label: "Data structures", keys: ["linked_list", "stacks_queues", "trees", "heap", "tries", "matrix"] },
+  { label: "Graphs", keys: ["graphs", "bfs", "dfs", "union_find"] },
+  { label: "Techniques", keys: ["recursion_backtracking", "dp", "greedy", "math_bits"] },
+];
 
 /** Opposite pairs: if the model returns both, the evidence is unclear, so both are dropped. */
 export const CONFLICTS: [StrengthKey, IssueKey][] = [

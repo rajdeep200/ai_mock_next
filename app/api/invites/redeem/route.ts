@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import { connectToDB } from "@/lib/mongodb"; // <-- your existing DB connector (keep as is)
 import Invite from "@/models/Invite"; // <-- your Invite schema (the one you pasted)
 import { User } from "@/models/User";  // <-- your existing User model
+import { InviteRedemption } from "@/models/InviteRedemption";
 
 // --- tiny helpers ---
 function addDays(date: Date, days: number) {
@@ -75,9 +76,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 6.1) OPTIONAL: If you later add InviteRedemption, you can prevent same-user repeat here:
-    // const alreadyRedeemed = await InviteRedemption.findOne({ inviteId: invite._id, clerkId });
-    // if (alreadyRedeemed) return NextResponse.json({ error: "Already redeemed" }, { status: 409 });
+    // 6.1) One redemption per user per invite
+    const alreadyRedeemed = await InviteRedemption.exists({ inviteId: invite._id, clerkId });
+    if (alreadyRedeemed) {
+      return NextResponse.json(
+        { error: "You have already redeemed this invite", code: "ALREADY_REDEEMED" },
+        { status: 409 }
+      );
+    }
 
     // 7) Start a transaction for atomicity
     const session = await mongoose.startSession();
@@ -134,8 +140,8 @@ export async function POST(req: NextRequest) {
 
       await freshInvite.save({ session });
 
-      // 9.1) OPTIONAL: If/when you add InviteRedemption, create a record here.
-      // await InviteRedemption.create([{ inviteId: freshInvite._id, clerkId }], { session });
+      // 9.1) Record the redemption; the unique (inviteId, clerkId) index rejects a concurrent duplicate
+      await InviteRedemption.create([{ inviteId: freshInvite._id, clerkId }], { session });
 
       // 10) Commit txn
       await session.commitTransaction();
@@ -158,6 +164,12 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       await session.abortTransaction();
       session.endSession();
+      if (err?.code === 11000) {
+        return NextResponse.json(
+          { error: "You have already redeemed this invite", code: "ALREADY_REDEEMED" },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: err?.message || "Redemption failed" },
         { status: 400 }

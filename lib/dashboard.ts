@@ -99,6 +99,8 @@ export type DashboardData = {
   habits: Gate & { strengths: HabitItem[]; issues: HabitItem[] };
   plan: PlanStep[];
   interviews: InterviewCard[];
+  /** Set by loadDashboard for users on an invite trial (a paid plan with no payment behind it). */
+  trial?: { state: "active" | "ended"; endsAt: string; daysLeft: number } | null;
 };
 
 const round1 = (n: number) => Math.round(n * 10) / 10;

@@ -52,6 +52,7 @@ sitemap/robots, OG image generation) is also part of the app — this is a live 
 | `NEXT_PUBLIC_APP_URL` | checkout return/notify URLs, share URLs, invite links | canonical app origin |
 | `NEXT_PUBLIC_SITE_URL` | `app/sitemap.ts`, `app/robots.ts`, `app/contact/page.tsx` | canonical marketing origin (`https://www.mockqube.com` fallback in `layout.tsx`) |
 | `ADMIN_API_TOKEN` | `lib/authz.ts` → `api/admin/*` | bearer token for admin routes |
+| `NEXT_PUBLIC_FEEDBACK_URL` | `component/dashboard/TrialBanner.tsx` | optional feedback form link for the trial banner (build-time; falls back to a `mailto:support@mockqube.com`) |
 | `KEEP_LOGS` | `next.config.ts` | if `"1"`, keep `console.*` in production builds (otherwise all but `error`/`warn` are stripped) |
 
 `NEXT_PUBLIC_ENC_KEY` is **no longer used** (the encrypted `/api/interview` route and `lib/crypto.ts` callers
@@ -89,7 +90,12 @@ were replaced by `/api/interview/turn`). `lib/crypto.ts` still exists but nothin
   Satori: the score ring is an inline SVG data URI and the font is the default) from `/api/share-public/[slug]`.
 - **Billing**: `/pricing` → POST `/api/checkout` → Cashfree hosted checkout → `/billing/return` (neutral
   landing, polls GET `/api/billing/verify?orderId=…`) and `/billing/success`.
-- **Invites/referrals**: `/invite/[token]` → POST `/api/invites/redeem`; admin-only POST `/api/admin/invites`.
+- **Invites/referrals**: `/invite/[token]` (redesigned: `SiteShell` frame, `InviteClient.tsx`, `invite.css`; it checks
+  `/api/plan` on load and shows "new free users only" up front for paid users) → POST `/api/invites/redeem`;
+  admin-only POST `/api/admin/invites`. A redeemed `pro_days` invite is an "invite trial": `plan: "pro"` with
+  `planRenewsAt` set and no `subscriptionId`. It lapses to Free through `effectivePlanId` (nothing runs at expiry).
+  The dashboard shows `TrialBanner` (days left, upgrade, feedback) for such users, and a "trial ended" version after.
+  `ChromeGate` hides the global chrome on `/invite/*`.
 - **Admin**: `GET /api/admin/costs?days=30` — average cost per interview grouped by duration (bearer `ADMIN_API_TOKEN`).
 
 ### API routes (all under `app/api/`)
@@ -207,7 +213,8 @@ write its own feedback or score.
   `lastWebhookEvent`/`lastWebhookNote` (now in the schema), `appliedAt` (set once the order has granted its plan).
 - **`Invite`** — only `tokenHash` (SHA-256) is persisted; `status`, `benefit` (`{type:'pro_days', amount}`),
   `maxRedemptions`/`redemptions`, `expiresAt`, `campaign`; statics `hashToken()`, `findUsableByToken()`.
-- **`InviteRedemption`** — exists but is **not used** (insert is commented out in `/api/invites/redeem`).
+- **`InviteRedemption`** — one doc per `(inviteId, clerkId)` (unique index), written inside the redeem transaction;
+  a repeat or concurrent redemption of the same invite returns 409 `ALREADY_REDEEMED`.
 
 ### Plans & quota (`lib/plans.ts`, `lib/usage.ts`)
 Single source of truth in `PLANS`:
@@ -253,8 +260,11 @@ model from `usage.scoreModel`, Polly standard at $4/M chars). Edit prices in `li
   param is missing.
 - **Only DSA is offered** in the UI (`StartInterviewClient` hardcodes `technology: "dsa"`). `lib/constant.ts`
   `TECHNOLOGIES` and the language mapping in `ClientInterview.tsx` are broader than what's reachable.
-- **Invite redemption** only checks "free plan with no `subscriptionId`"; with `InviteRedemption` unused, the
-  same user can redeem a multi-use invite repeatedly. Wire the model up before relying on one-per-user.
+- **Invite redemption** only allows users whose raw `plan` is `free` with no `subscriptionId`, so an expired trial
+  user (still `plan: "pro"` in the DB) can't redeem another invite. The admin invite route ignores `campaign`/`notes`
+  (not saved) and `NEXT_PUBLIC_APP_URL` has a trailing slash in `.env`, so route-built links get a double slash.
+- **Buying during a trial**: buying Pro extends from the trial end (trial days are kept); buying Starter is blocked
+  (`LOWER_PLAN`) until the trial ends.
 - **Admin auth** (`lib/authz.ts`) compares the bearer token with `==`, not a constant-time compare.
 - Several server routes read env with a trailing `!` and fail at request time if unset (`lib/mongodb.ts`,
   `lib/authz.ts`, `lib/cashfree.ts`, `api/interview/turn`, `lib/scoring.ts`).

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bricolage_Grotesque, Figtree } from "next/font/google";
+import { bricolage, figtree } from "@/lib/fonts";
 import "./home.css";
 import HomeHeader from "@/component/home/HomeHeader";
 import HomeFooter from "@/component/home/HomeFooter";
@@ -17,20 +17,6 @@ import {
   PulseIcon,
   CodeIcon,
 } from "@/component/home/icons";
-
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  weight: ["300", "500", "700"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
-
-const figtree = Figtree({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-figtree",
-  display: "swap",
-});
 
 const BENEFITS = [
   { k: "Low-latency voice", v: "Natural follow-ups", icon: <MicIcon /> },

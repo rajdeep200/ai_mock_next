@@ -14,6 +14,13 @@ function addDays(date: Date, days: number) {
   return d;
 }
 
+// Expected, user-facing failures inside the transaction (anything else is a server error)
+class RedeemError extends Error {
+  constructor(message: string, public code: string) {
+    super(message);
+  }
+}
+
 /**
  * POST /api/invites/redeem
  * Body: { token: string }
@@ -85,95 +92,109 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 7) Start a transaction for atomicity
+    // 7) Make sure the redemptions collection and its unique index exist before the
+    // transaction; creating them mid-transaction fails with a transient "catalog changes" error.
+    await InviteRedemption.init();
+
+    // Captured once: withTransaction may re-run the callback, and the loaded user is mutated below.
+    const originalRenewsAt: Date | undefined = user.planRenewsAt ?? undefined;
+
+    // 7.1) Transaction for atomicity; withTransaction retries transient errors for us
     const session = await mongoose.startSession();
-    session.startTransaction();
 
     try {
-      // 7.1) Re-fetch inside the txn with "for update" semantics (by _id) to avoid races
-      const freshInvite = await Invite.findById(invite._id).session(session).exec();
-      if (!freshInvite) {
-        throw new Error("Invite vanished during transaction");
-      }
+      let result: { invite: any; planRenewsAt: Date } | null = null;
 
-      // Check again inside txn (still usable?)
-      const now = Date.now();
-      const expired = !!freshInvite.expiresAt && freshInvite.expiresAt.getTime() <= now;
-      const statusOk = ["created", "sent"].includes(freshInvite.status);
-      const capacityOk = freshInvite.redemptions < freshInvite.maxRedemptions;
+      await session.withTransaction(async () => {
+        // Re-fetch inside the txn (by _id) to avoid races
+        const freshInvite = await Invite.findById(invite._id).session(session).exec();
+        if (!freshInvite) {
+          throw new RedeemError("Invite no longer usable", "INVITE_INVALID");
+        }
 
-      if (!statusOk || expired || !capacityOk) {
-        throw new Error("Invite no longer usable");
-      }
+        // Check again inside txn (still usable?)
+        const now = Date.now();
+        const expired = !!freshInvite.expiresAt && freshInvite.expiresAt.getTime() <= now;
+        const statusOk = ["created", "sent"].includes(freshInvite.status);
+        const capacityOk = freshInvite.redemptions < freshInvite.maxRedemptions;
 
-      // 8) Apply benefit
-      if (freshInvite.benefit?.type !== "pro_days") {
-        throw new Error("Unsupported benefit type");
-      }
+        if (!statusOk || expired || !capacityOk) {
+          throw new RedeemError("Invite no longer usable", "INVITE_INVALID");
+        }
 
-      const days = Number(freshInvite.benefit.amount || 0);
-      if (!Number.isFinite(days) || days <= 0) {
-        throw new Error("Invalid benefit amount");
-      }
+        // 8) Apply benefit
+        if (freshInvite.benefit?.type !== "pro_days") {
+          throw new Error("Unsupported benefit type");
+        }
 
-      // Upgrade user to pro and extend planRenewsAt
-      const nowDate = new Date();
-      const base = user.planRenewsAt && user.planRenewsAt > nowDate ? user.planRenewsAt : nowDate;
-      const newRenewsAt = addDays(base, days);
+        const days = Number(freshInvite.benefit.amount || 0);
+        if (!Number.isFinite(days) || days <= 0) {
+          throw new Error("Invalid benefit amount");
+        }
 
-      user.plan = "pro";
-      user.planRenewsAt = newRenewsAt;
-      // Keep subscriptionProvider/subscriptionId untouched since this is a promo
-      await user.save({ session });
+        // Upgrade user to pro and extend planRenewsAt
+        const nowDate = new Date();
+        const base = originalRenewsAt && originalRenewsAt > nowDate ? originalRenewsAt : nowDate;
+        const newRenewsAt = addDays(base, days);
 
-      // 9) Update invite counters & status
-      freshInvite.redemptions += 1;
+        user.plan = "pro";
+        user.planRenewsAt = newRenewsAt;
+        // Keep subscriptionProvider/subscriptionId untouched since this is a promo
+        await user.save({ session });
 
-      // For single-use invites, remember the redeemer
-      if (!freshInvite.redeemedByUserId && freshInvite.maxRedemptions === 1) {
-        freshInvite.redeemedByUserId = clerkId;
-      }
+        // 9) Update invite counters & status
+        freshInvite.redemptions += 1;
 
-      if (freshInvite.redemptions >= freshInvite.maxRedemptions) {
-        freshInvite.status = "redeemed";
-      }
+        // For single-use invites, remember the redeemer
+        if (!freshInvite.redeemedByUserId && freshInvite.maxRedemptions === 1) {
+          freshInvite.redeemedByUserId = clerkId;
+        }
 
-      await freshInvite.save({ session });
+        if (freshInvite.redemptions >= freshInvite.maxRedemptions) {
+          freshInvite.status = "redeemed";
+        }
 
-      // 9.1) Record the redemption; the unique (inviteId, clerkId) index rejects a concurrent duplicate
-      await InviteRedemption.create([{ inviteId: freshInvite._id, clerkId }], { session });
+        await freshInvite.save({ session });
 
-      // 10) Commit txn
-      await session.commitTransaction();
-      session.endSession();
+        // 9.1) Record the redemption; the unique (inviteId, clerkId) index rejects a concurrent duplicate
+        await InviteRedemption.create([{ inviteId: freshInvite._id, clerkId }], { session });
 
+        result = { invite: freshInvite, planRenewsAt: newRenewsAt };
+      });
+
+      // withTransaction has committed by here
+      const done = result as unknown as { invite: any; planRenewsAt: Date };
       return NextResponse.json({
         ok: true,
         applied: {
-          benefit: freshInvite.benefit,
+          benefit: done.invite.benefit,
           plan: user.plan,
-          planRenewsAt: user.planRenewsAt,
+          planRenewsAt: done.planRenewsAt,
         },
         invite: {
-          id: freshInvite.id,
-          status: freshInvite.status,
-          redemptions: freshInvite.redemptions,
-          maxRedemptions: freshInvite.maxRedemptions,
+          id: done.invite.id,
+          status: done.invite.status,
+          redemptions: done.invite.redemptions,
+          maxRedemptions: done.invite.maxRedemptions,
         },
       });
     } catch (err: any) {
-      await session.abortTransaction();
-      session.endSession();
       if (err?.code === 11000) {
         return NextResponse.json(
           { error: "You have already redeemed this invite", code: "ALREADY_REDEEMED" },
           { status: 409 }
         );
       }
+      if (err instanceof RedeemError) {
+        return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
+      }
+      console.error("[INVITE_REDEEM_TXN_ERROR]", err);
       return NextResponse.json(
-        { error: err?.message || "Redemption failed" },
-        { status: 400 }
+        { error: "Couldn't redeem this invite right now. Please try again in a moment.", code: "REDEEM_FAILED" },
+        { status: 500 }
       );
+    } finally {
+      await session.endSession();
     }
   } catch (e: any) {
     console.error("[INVITE_REDEEM_ERROR]", e);

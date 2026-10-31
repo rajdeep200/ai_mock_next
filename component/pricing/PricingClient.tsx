@@ -29,17 +29,20 @@ const FEATURES: Record<PlanId, PlanFeature[]> = {
     { text: mins("free"), on: true },
     { text: "Basic question set", on: true },
     { text: "Company-style questions", on: PLANS.free.features.companyPatterns },
+    { text: "Topic-wise interviews", on: PLANS.free.features.topicFocus },
   ],
   starter: [
     { text: cap("starter"), on: true },
     { text: mins("starter"), on: true },
     { text: "Company-style questions", on: PLANS.starter.features.companyPatterns },
+    { text: "Topic-wise interviews", on: PLANS.starter.features.topicFocus },
     { text: "Premium voice & export", on: PLANS.starter.features.premiumTTS },
   ],
   pro: [
     { text: cap("pro"), on: true },
     { text: mins("pro"), on: true },
     { text: "Company-style questions", on: PLANS.pro.features.companyPatterns },
+    { text: "Topic-wise interviews", on: PLANS.pro.features.topicFocus },
     { text: "Premium voice, export & full history", on: PLANS.pro.features.premiumTTS },
   ],
 };

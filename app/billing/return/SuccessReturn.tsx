@@ -122,6 +122,7 @@ export default function PaymentStatus() {
     `${plan.monthlyInterviewCap} interviews every month`,
     `Sessions up to ${plan.maxMinutesPerInterview} minutes`,
     ...(plan.features.companyPatterns ? ["Company-specific questions"] : []),
+    ...(plan.features.topicFocus ? ["Topic-wise interviews"] : []),
     `Active for ${PASS_DAYS} days`,
   ];
 

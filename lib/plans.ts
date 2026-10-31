@@ -7,6 +7,7 @@ export const PLANS: Record<PlanId, {
   maxMinutesPerInterview: number;
   features: {
     companyPatterns: boolean;
+    topicFocus: boolean;
     premiumTTS: boolean;
     export: boolean;
     fullHistory: boolean;
@@ -16,19 +17,19 @@ export const PLANS: Record<PlanId, {
     label: 'Free',
     monthlyInterviewCap: 2,
     maxMinutesPerInterview: 15,
-    features: { companyPatterns: false, premiumTTS: false, export: false, fullHistory: false },
+    features: { companyPatterns: false, topicFocus: false, premiumTTS: false, export: false, fullHistory: false },
   },
   starter: {
     label: 'Starter',
     monthlyInterviewCap: 15,
     maxMinutesPerInterview: 30,
-    features: { companyPatterns: true, premiumTTS: false, export: false, fullHistory: false },
+    features: { companyPatterns: true, topicFocus: true, premiumTTS: false, export: false, fullHistory: false },
   },
   pro: {
     label: 'Pro',
     monthlyInterviewCap: 25,
     maxMinutesPerInterview: 45,
-    features: { companyPatterns: true, premiumTTS: true, export: true, fullHistory: true },
+    features: { companyPatterns: true, topicFocus: true, premiumTTS: true, export: true, fullHistory: true },
   },
 };
 

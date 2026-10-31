@@ -63,6 +63,10 @@ export default function PricingPage() {
               {IDS.map((id) => <span key={id}>{flag(PLANS[id].features.companyPatterns)}</span>)}
             </div>
             <div className="row" role="row">
+              <span>Topic-wise interviews</span>
+              {IDS.map((id) => <span key={id}>{flag(PLANS[id].features.topicFocus)}</span>)}
+            </div>
+            <div className="row" role="row">
               <span>Premium voice</span>
               {IDS.map((id) => <span key={id}>{flag(PLANS[id].features.premiumTTS)}</span>)}
             </div>

@@ -9,6 +9,8 @@ export type SessionUsage = {
   turnOutTokens?: number;
   ttsCalls?: number;
   ttsChars?: number;
+  sttCalls?: number;
+  sttSeconds?: number;
   scoreModel?: string;
   scoreInTokens?: number;
   scoreOutTokens?: number;
@@ -25,6 +27,9 @@ export const TURN_MODEL_ID = "gpt-4o-mini";
 // USD per 1M characters (Polly standard voices)
 export const POLLY_STANDARD_PER_M_CHARS = 4;
 
+// USD per minute of speech sent for transcription (gpt-4o-mini-transcribe; third-party trackers report ~$0.003, verify on OpenAI's pricing page)
+export const STT_PER_MIN = 0.003;
+
 const priceOf = (model?: string) => (model && TOKEN_PRICES[model]) || UNKNOWN_MODEL_PRICE;
 
 export function estimateCost(u: SessionUsage | null | undefined) {
@@ -34,5 +39,6 @@ export function estimateCost(u: SessionUsage | null | undefined) {
   const turns = ((x.turnInTokens ?? 0) * turn.in + (x.turnOutTokens ?? 0) * turn.out) / 1e6;
   const tts = ((x.ttsChars ?? 0) * POLLY_STANDARD_PER_M_CHARS) / 1e6;
   const scoring = ((x.scoreInTokens ?? 0) * score.in + (x.scoreOutTokens ?? 0) * score.out) / 1e6;
-  return { turns, tts, scoring, total: turns + tts + scoring };
+  const stt = ((x.sttSeconds ?? 0) / 60) * STT_PER_MIN;
+  return { turns, tts, stt, scoring, total: turns + tts + stt + scoring };
 }

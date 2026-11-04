@@ -26,7 +26,7 @@ sitemap/robots, OG image generation) is also part of the app — this is a live 
 - **AI**: OpenAI (`openai` SDK). Live interview turns use `gpt-4o-mini` (streamed). End-of-interview scoring
   uses `OPENAI_SCORING_MODEL` (default `gpt-4.1`) with structured JSON output, falling back to `gpt-4o-mini`.
 - **TTS**: AWS Polly (`@aws-sdk/client-polly`), returned as `audio/mpeg`.
-- **STT**: `react-speech-recognition` (browser Web Speech API) — client-side only, no server STT.
+- **STT**: OpenAI transcription (default `gpt-4o-mini-transcribe`, falls back to `whisper-1`) via `POST /api/stt`. The browser keeps the mic open (`hooks/useVoiceCapture.ts`), a small voice detector cuts out each utterance as a 16 kHz WAV clip and uploads it. `react-speech-recognition` is no longer used by the live interview.
 - **Code editor**: Monaco (`@monaco-editor/react`), dynamically imported with SSR disabled.
 - **Charts**: `recharts` (dashboard). **3D**: `three` (landing hero cube).
 - **Payments**: Cashfree (`@cashfreepayments/cashfree-js` client SDK + REST API server-side via `lib/cashfree.ts`).
@@ -42,6 +42,7 @@ sitemap/robots, OG image generation) is also part of the app — this is a live 
 |---|---|---|
 | `MONGODB_URI` | `lib/mongodb.ts`, `api/feedback` | Mongo connection string |
 | `OPENAI_API_KEY` | `api/interview/turn`, `lib/scoring.ts` | OpenAI |
+| `OPENAI_STT_MODEL` | `api/stt` | speech-to-text model (default `gpt-4o-mini-transcribe`; `whisper-1` is the automatic fallback) |
 | `OPENAI_SCORING_MODEL` | `lib/scoring.ts` | scoring model (default `gpt-4.1`; reasoning models `gpt-5*`/`o*` are handled, no temperature) |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` | Clerk | auth |
 | `AWS_REGION` (default `us-east-1`), standard AWS credential vars (SDK default chain) | `api/tts` | Polly |
@@ -101,7 +102,7 @@ were replaced by `/api/interview/turn`). `lib/crypto.ts` still exists but nothin
 ### API routes (all under `app/api/`)
 `admin/costs`, `admin/invites`, `billing/verify`, `checkout`, `create-interview`, `feedback`,
 `interview/turn`, `interview/summary`, `interview/abandon`, `invites/redeem`, `og/session/[slug]`, `plan`,
-`register`, `sessions`, `sessions/[id]`, `sessions/[id]/share`, `share-public/[slug]`, `tts`, `user`,
+`register`, `sessions`, `sessions/[id]`, `sessions/[id]/share`, `share-public/[slug]`, `stt`, `tts`, `user`,
 `webhooks/cashfree`.
 
 ### The interview engine (core feature)
@@ -147,7 +148,11 @@ write its own feedback or score.
 - **Client behaviour in `ClientInterview.tsx`**:
   - Replies stream in; each completed sentence is sent to `/api/tts` immediately and played in order
     (`createReplySpeaker`, `takeSentences`). Text for a sentence appears when its audio starts.
-  - Speech is auto-sent after an adaptive silence window (3–6s, longer if the sentence sounds unfinished);
+  - Speech capture (`useVoiceCapture`): the mic stays open all interview; `start()`/`stop()` only open/close a gate (closed while the
+    interviewer talks unless headphones mode). A voice detector (thresholds at the top of the hook) ends a clip after ~1.5s of quiet,
+    keeps 450ms of lead-in, encodes 16 kHz mono WAV and POSTs it to `/api/stt` (session-scoped, capped at `MAX_STT_CALLS`, counts
+    `usage.sttCalls/sttSeconds`). Results are re-ordered and joined into `transcript`; the send timer waits until no clip is speaking or in flight.
+  - Speech is auto-sent after an adaptive silence window (2–4s, longer if the sentence sounds unfinished; the detector gap and transcription time count toward it, with a 250ms floor);
     "Hold on" pauses auto-send; "Send now" flushes. Barge-in: speaking (or Space) cancels TTS; a
     "headphones" mode (localStorage `mq-headphones`) keeps the mic open while the interviewer talks.
   - Turns made while one is in flight are queued and merged; retryable errors show a "Try again" banner;
@@ -244,7 +249,8 @@ plan whose `planRenewsAt` has passed as `free`; always use it (or `getUserPlan`)
 ### Cost tracking (`lib/cost.ts`)
 Raw counts live on `InterviewSession.usage`; `estimateCost` prices them (turn model `gpt-4o-mini`, scoring
 model from `usage.scoreModel`, Polly standard at $4/M chars). Edit prices in `lib/cost.ts` only.
-`/api/tts` increments `usage.ttsCalls/ttsChars` when the client passes `sessionId`.
+`/api/tts` increments `usage.ttsCalls/ttsChars` when the client passes `sessionId`. `/api/stt` increments `usage.sttCalls/sttSeconds`
+(priced at `STT_PER_MIN` in `lib/cost.ts`, an unverified list price).
 
 ## Key conventions / gotchas
 

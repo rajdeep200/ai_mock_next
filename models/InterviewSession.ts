@@ -54,6 +54,8 @@ const InterviewSessionSchema = new mongoose.Schema(
       turnOutTokens: { type: Number, default: 0 },
       ttsCalls: { type: Number, default: 0 },
       ttsChars: { type: Number, default: 0 },
+      sttCalls: { type: Number, default: 0 },
+      sttSeconds: { type: Number, default: 0 },
       scoreModel: { type: String, default: null },
       scoreInTokens: { type: Number, default: 0 },
       scoreOutTokens: { type: Number, default: 0 },

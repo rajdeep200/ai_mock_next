@@ -8,6 +8,8 @@ export const GRACE_SECONDS = 120; // how long after the scheduled end a turn is 
 export const MAX_MESSAGE_CHARS = 8000; // one spoken answer or one code submission
 export const MAX_LIVE_CODE_CHARS = 6000; // editor snapshot attached to a turn
 export const MAX_CONTEXT_CHARS = 60_000; // transcript sent to the model per turn (oldest dropped first)
+export const MAX_STT_CALLS = 800; // speech clips transcribed per interview (cost guard)
+export const MAX_STT_BYTES = 6_000_000; // one spoken clip (16 kHz mono WAV is ~32 KB per second)
 
 // ---- Control token the interviewer emits to end the session ----
 export const END_TOKEN_REGEX = /(?:\[|<)?\s*END[\s_\-]*INTERVIEW\s*(?:\]|>|\/>)?/i;
@@ -46,4 +48,5 @@ export type ApiErrorCode =
   | "TOO_FAST"
   | "NOT_STARTED"
   | "IN_PROGRESS"
+  | "STT_CAP"
   | "UPSTREAM";

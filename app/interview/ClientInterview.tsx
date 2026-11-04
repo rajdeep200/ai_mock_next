@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
+import { useVoiceCapture } from "@/hooks/useVoiceCapture";
 import { SignedIn, SignedOut, SignInButton, useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
@@ -22,8 +22,11 @@ const END_TOKEN_GLOBAL = new RegExp(END_TOKEN_REGEX.source, "gi");
 
 
 // How long to wait after the last word before treating an answer as finished.
-const BASE_SILENCE_MS = 3000;
-const MAX_SILENCE_MS = 6000;
+// The voice detector's end-of-speech gap and the transcription time are already counted toward this (see the send effect),
+// so for an answer that sounds finished the reply goes out almost as soon as the last clip is transcribed.
+const BASE_SILENCE_MS = 2000;
+const MAX_SILENCE_MS = 4000;
+const MIN_SEND_DELAY_MS = 250; // shortest wait after the last clip comes back
 const HOLD_MAX_MS = 60_000;
 // Endings that signal the sentence isn't finished yet.
 const UNFINISHED_END = /(?:^|\s)(so|and|but|because|then|if|or|like|um+|uh+|uhm|hmm+|the|a|an|to|of|is|that|which|with|maybe|basically|actually|i think|let me|for example)[\s,.]*$/i;
@@ -31,9 +34,9 @@ const silenceWaitMs = (text: string) => {
   const t = text.trim();
   const words = t ? t.split(/\s+/).length : 0;
   let ms = BASE_SILENCE_MS;
-  if (UNFINISHED_END.test(t)) ms += 2000; // mid-sentence
-  if (words < 4) ms += 1000;              // people often pause after the first few words
-  else if (words >= 25 && !UNFINISHED_END.test(t)) ms -= 500; // long answer that sounds done: don't drag
+  if (UNFINISHED_END.test(t)) ms += 1500; // mid-sentence
+  if (words < 4) ms += 700;               // people often pause after the first few words
+  else if (words >= 25 && !UNFINISHED_END.test(t)) ms -= 400; // long answer that sounds done: don't drag
   return Math.min(ms, MAX_SILENCE_MS);
 };
 
@@ -164,7 +167,20 @@ export default function InterviewPage() {
   const level = searchParams.get("level") ?? "Junior";
   const router = useRouter();
 
-  const { transcript: rawTranscript, resetTranscript, listening, isMicrophoneAvailable, browserSupportsSpeechRecognition } = useSpeechRecognition();
+  // Speech-to-text: the mic stays open, a voice detector cuts out what you say, and /api/stt turns it into text.
+  const capture = useVoiceCapture({
+    sessionId,
+    // With headphones the mic is open while the interviewer talks, so speaking over them interrupts
+    onSpeechStart: () => { if (headphonesRef.current) cancelTTS(); },
+    onError: (kind) => {
+      if (kind === "transcribe") flashToast("Couldn't catch that. Please say it again.");
+    },
+  });
+  const rawTranscript = capture.transcript;
+  const resetTranscript = capture.reset;
+  const listening = capture.listening;
+  const isMicrophoneAvailable = capture.micAvailable;
+  const browserSupportsSpeechRecognition = capture.supported;
   const transcript = cleanSpeech(rawTranscript);
   const [hold, setHold] = useState(false); // "Hold on": pause the auto-send while the user thinks
   const [sendWait, setSendWait] = useState<{ ms: number; id: number } | null>(null); // drives the "sending in…" bar
@@ -213,13 +229,13 @@ export default function InterviewPage() {
       const audio = new Audio(url);
       audioRef.current = audio;
       playingRef.current = true;
-      if (!headphonesRef.current) { try { SpeechRecognition.stopListening(); } catch { } }
+      if (!headphonesRef.current) capture.stop();
       let settled = false;
       const done = () => { if (!settled) { settled = true; resolve(); } };
       audio.onplay = () => {
         if (token === speechTokenRef.current) setSpeaking(true);
         // keep the mic off while the interviewer talks, unless the user wears headphones
-        if (!headphonesRef.current) { try { SpeechRecognition.stopListening(); } catch { } }
+        if (!headphonesRef.current) capture.stop();
       };
       audio.onended = done;
       audio.onerror = done;
@@ -428,13 +444,15 @@ export default function InterviewPage() {
 
   useEffect(() => {
     if (!transcript.trim()) { setSendWait(null); return; }
-    cancelTTS(); // [TTS] stop TTS when user speaks
     if (hold) { setSendWait(null); return; } // user asked for time to think: don't auto-send
-    const ms = silenceWaitMs(transcript);
+    if (capture.activity !== "idle") { setSendWait(null); return; } // still talking, or a clip is still being turned into text
+    // Silence already spent (the voice detector's gap plus transcription time) counts toward the pause
+    const waited = Date.now() - capture.lastVoiceAtRef.current;
+    const ms = Math.max(MIN_SEND_DELAY_MS, silenceWaitMs(transcript) - waited);
     setSendWait({ ms, id: Date.now() }); // restarts the progress bar every time new words arrive
     const timeout = setTimeout(flushSpeech, ms);
     return () => clearTimeout(timeout);
-  }, [transcript, resetTranscript, hold]);
+  }, [transcript, hold, capture.activity]);
 
   // "Hold on" can't stall the interview: it releases by itself.
   useEffect(() => {
@@ -443,16 +461,16 @@ export default function InterviewPage() {
     return () => clearTimeout(t);
   }, [hold]);
 
-  // The browser's recognizer stops by itself after a long pause. Re-arm it (keeping the text captured so far)
-  // unless the mic is muted, the AI is talking, or the interview is over.
+  // Open the mic gate (this is also what asks for microphone access the first time), unless the mic is muted,
+  // the AI is talking, or the interview is over. Closing and opening the gate is instant: the mic itself stays open.
   useEffect(() => {
     if (listening || (speaking && !headphones) || ended || !micOn || !guardDone) return;
     if (!browserSupportsSpeechRecognition || !isMicrophoneAvailable) return;
     const t = setTimeout(() => {
       if (!playingRef.current || headphonesRef.current) startListening();
-    }, 500);
+    }, 100);
     return () => clearTimeout(t);
-  }, [listening, speaking, ended, micOn, guardDone, isMicrophoneAvailable, headphones]);
+  }, [listening, speaking, ended, micOn, guardDone, isMicrophoneAvailable, headphones, browserSupportsSpeechRecognition]);
 
   // Cut the interviewer off and open the mic right away (button, or Space while they're talking).
   const interrupt = () => {
@@ -468,7 +486,7 @@ export default function InterviewPage() {
     try { localStorage.setItem("mq-headphones", next ? "1" : "0"); } catch { }
     if (!playingRef.current) return;
     if (next) startListening();
-    else { try { SpeechRecognition.stopListening(); } catch { } }
+    else capture.stop();
   };
 
   useEffect(() => {
@@ -484,25 +502,17 @@ export default function InterviewPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [speaking]);
 
-  const MIC_ARM_DELAY_MS = 300; // small buffer so the engine is "ready"
-
   const startListening = () => {
     if (endedRef.current) return;
     if (!browserSupportsSpeechRecognition || !micOnRef.current) return;
-    setTimeout(() => {
-      SpeechRecognition.startListening({
-        continuous: true,
-        interimResults: true,
-        language: "en-US",
-      });
-    }, MIC_ARM_DELAY_MS);
+    capture.start();
   };
 
   // Clean up
   useEffect(() => {
     const cleanUp = () => {
       cancelTTS(); // [TTS]
-      SpeechRecognition.stopListening();
+      capture.stop();
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
         mediaStreamRef.current = null;
@@ -828,9 +838,9 @@ export default function InterviewPage() {
     setMicOn(newMicState);
     if (newMicState) {
       resetTranscript();
-      SpeechRecognition.startListening({ continuous: true, language: "en-US" });
+      capture.start();
     } else {
-      SpeechRecognition.stopListening();
+      capture.stop();
     }
     markActivity();
   };
@@ -846,7 +856,7 @@ export default function InterviewPage() {
 
     // Stop all audio/video immediately
     cancelTTS(); // [TTS]
-    try { SpeechRecognition.stopListening(); } catch { }
+    capture.release(); // closes the microphone, so the browser's "mic in use" light goes off while feedback is written
 
     if (videoRef.current) videoRef.current.srcObject = null;
     if (mediaStreamRef.current) {
@@ -896,6 +906,11 @@ export default function InterviewPage() {
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashToast = (msg: string) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 6000);
+  };
 
   // Friendly on-screen version of the 5 / 2 / 1 minute nudges.
   useEffect(() => {
@@ -1000,6 +1015,17 @@ export default function InterviewPage() {
             <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
             <span>We couldn&apos;t reach the interviewer. Your answer wasn&apos;t lost.</span>
             <button type="button" className="btn" onClick={() => retryRef.current?.()}>Try again</button>
+          </div>
+        )}
+
+        {guardDone && !ending && (!isMicrophoneAvailable || !browserSupportsSpeechRecognition) && (
+          <div className="notice n-err" role="alert">
+            <svg className="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></svg>
+            <span>
+              {!browserSupportsSpeechRecognition
+                ? "This browser can't record your voice. Please use a recent version of Chrome, Edge or Safari."
+                : "Microphone access is blocked. Allow it in your browser's address bar, then reload this page."}
+            </span>
           </div>
         )}
 

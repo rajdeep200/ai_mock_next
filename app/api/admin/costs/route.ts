@@ -25,13 +25,14 @@ export async function GET(req: Request) {
   ).lean<{ duration: number; status: string; turnCount?: number; usage?: SessionUsage }[]>();
 
   // Group by scheduled length: a 15-minute and a 60-minute interview cost very different amounts
-  const groups = new Map<number, { n: number; turns: number; tts: number; scoring: number; total: number; max: number; aiTurns: number }>();
+  const groups = new Map<number, { n: number; turns: number; tts: number; stt: number; scoring: number; total: number; max: number; aiTurns: number }>();
   for (const s of sessions) {
     const c = estimateCost(s.usage);
-    const g = groups.get(s.duration) ?? { n: 0, turns: 0, tts: 0, scoring: 0, total: 0, max: 0, aiTurns: 0 };
+    const g = groups.get(s.duration) ?? { n: 0, turns: 0, tts: 0, stt: 0, scoring: 0, total: 0, max: 0, aiTurns: 0 };
     g.n += 1;
     g.turns += c.turns;
     g.tts += c.tts;
+    g.stt += c.stt;
     g.scoring += c.scoring;
     g.total += c.total;
     g.max = Math.max(g.max, c.total);
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
       minutes,
       interviews: g.n,
       avgAiTurns: round(g.aiTurns / g.n, 1),
-      avgUsd: { turns: round(g.turns / g.n), tts: round(g.tts / g.n), scoring: round(g.scoring / g.n), total: round(g.total / g.n) },
+      avgUsd: { turns: round(g.turns / g.n), tts: round(g.tts / g.n), stt: round(g.stt / g.n), scoring: round(g.scoring / g.n), total: round(g.total / g.n) },
       maxUsd: round(g.max),
     }));
 
